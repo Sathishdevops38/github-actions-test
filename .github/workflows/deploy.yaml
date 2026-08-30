@@ -28,7 +28,7 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4.1.0
         with:
-          role-to-assume: arn:aws:iam::697245141874:role/GitHubActions-Deployment-Role
+          role-to-assume: arn:aws:iam::697245141874:role/app-deployment-runner
           aws-region: us-east-1
 
       - name: Test AWS Connectivity
