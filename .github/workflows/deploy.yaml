@@ -1,27 +1,27 @@
-name: Deploy to AWS
+# name: Deploy to AWS
 
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:  
+# on:
+#   push:
+#     branches: [ "main" ]
+#   workflow_dispatch:  
 
-permissions:
-  id-token: write   # Required for requesting the OIDC JWT
-  contents: read    # Required to check out code
+# permissions:
+#   id-token: write   # Required for requesting the OIDC JWT
+#   contents: read    # Required to check out code
 
-jobs:
-  aws-deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+# jobs:
+#   aws-deploy:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4.1.0
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+#       - name: Configure AWS Credentials
+#         uses: aws-actions/configure-aws-credentials@v4.1.0
+#         with:
+#           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+#           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Test AWS Connectivity
-        run: |
-          aws sts get-caller-identity
+#       - name: Test AWS Connectivity
+#         run: |
+#           aws sts get-caller-identity
