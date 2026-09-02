@@ -109,26 +109,43 @@ resource "aws_kms_grant" "asg" {
 data "aws_caller_identity" "current" {}
 
 # --------------------------------------------------------------------------
-# KMS grant — allows CloudWatch Logs to encrypt log groups with the KMS key.
-# The logs.amazonaws.com service principal must be granted access explicitly;
-# the runner IAM role permissions are insufficient for this.
+# KMS key policy — allows CloudWatch Logs service principal to use the key.
+# aws_kms_grant does not support service principals (only IAM role/user ARNs);
+# a key policy statement is required for logs.amazonaws.com.
+# This appends to the existing key policy without replacing it.
 # --------------------------------------------------------------------------
-resource "aws_kms_grant" "cloudwatch_logs" {
-  name              = "${var.name_prefix}-cwlogs-ebs-grant"
-  key_id            = var.kms_key_arn
-  grantee_principal = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*"
+data "aws_region" "current" {}
 
-  operations = [
-    "Decrypt",
-    "DescribeKey",
-    "GenerateDataKey",
-    "GenerateDataKeyWithoutPlaintext",
-    "ReEncryptFrom",
-    "ReEncryptTo",
-  ]
+data "aws_iam_policy_document" "kms_cloudwatch_logs" {
+  statement {
+    sid    = "AllowCloudWatchLogsKMS"
+    effect = "Allow"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey",
+      "kms:DescribeKey",
+    ]
+    resources = ["*"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${data.aws_region.current.name}.amazonaws.com"]
+    }
+
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*"]
+    }
+  }
 }
 
-data "aws_region" "current" {}
+resource "aws_kms_key_policy" "cloudwatch_logs" {
+  key_id = var.kms_key_arn
+  policy = data.aws_iam_policy_document.kms_cloudwatch_logs.json
+}
 
 # Optional: allow runner to push ECR images / describe ECR (append additional
 # managed policies via var.extra_policy_arns if needed)
