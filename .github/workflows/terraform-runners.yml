@@ -130,6 +130,17 @@ jobs:
             -backend-config="kms_key_id=${{ secrets.TF_STATE_KMS_KEY_ID }}"
         working-directory: ${{ env.TF_WORKING_DIR }}
 
+      - name: Clear stale state lock (if any)
+        run: |
+          LOCK_KEY="github-actions-runners/${{ github.event.inputs.environment || 'prod' }}/terraform.tfstate.tflock"
+          if aws s3api head-object --bucket "${{ secrets.TF_STATE_BUCKET }}" --key "$LOCK_KEY" 2>/dev/null; then
+            echo "Stale lock found — removing s3://${{ secrets.TF_STATE_BUCKET }}/$LOCK_KEY"
+            aws s3 rm "s3://${{ secrets.TF_STATE_BUCKET }}/$LOCK_KEY"
+          else
+            echo "No stale lock present."
+          fi
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
       - name: Terraform Plan
         id: plan
         run: |
