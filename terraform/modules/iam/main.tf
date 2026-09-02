@@ -66,31 +66,13 @@ resource "aws_iam_role_policy" "runner_secrets" {
 }
 
 # --------------------------------------------------------------------------
-# KMS key policy grant — allows the EC2 Auto Scaling service to use the KMS
-# key when launching instances with encrypted EBS volumes via the ASG.
+# KMS key grant — allows the EC2 Auto Scaling service-linked role to use the
+# KMS key when launching instances with encrypted EBS volumes via the ASG.
 # Without this, the ASG cannot attach encrypted volumes and instances fail
 # to start with "KMS key inaccessible" errors.
+# aws_kms_grant is used here (not aws_kms_key_policy) because the grantee is
+# an IAM role ARN, which aws_kms_grant supports directly.
 # --------------------------------------------------------------------------
-data "aws_iam_policy_document" "asg_kms_grant" {
-  statement {
-    sid    = "AllowASGServiceKMSAccess"
-    effect = "Allow"
-    actions = [
-      "kms:CreateGrant",
-      "kms:Decrypt",
-      "kms:DescribeKey",
-      "kms:GenerateDataKeyWithoutPlaintext",
-      "kms:ReEncrypt*",
-    ]
-    resources = [var.kms_key_arn]
-
-    principals {
-      type        = "Service"
-      identifiers = ["autoscaling.amazonaws.com"]
-    }
-  }
-}
-
 resource "aws_kms_grant" "asg" {
   name              = "${var.name_prefix}-asg-ebs-grant"
   key_id            = var.kms_key_arn
