@@ -1,0 +1,39 @@
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in the values.
+# NEVER commit terraform.tfvars to version control.
+
+aws_region  = "us-east-1"
+environment = "prod"
+owner       = "platform-team"
+name_prefix = "gh-runner"
+
+# Networking
+vpc_cidr             = "10.0.0.0/16"
+public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+availability_zones   = ["us-east-1a", "us-east-1b"]
+
+# GitHub
+github_owner        = "YOUR_GITHUB_ORG_OR_USER"
+github_repo         = ""                   # leave empty for org-level runners
+runner_group        = "default"
+runner_version      = "2.317.0"
+extra_runner_labels = ["prod", "aws"]
+ephemeral_runners   = true
+
+# EC2
+# Get the latest AL2023 AMI from the AWS console or:
+#   aws ec2 describe-images --owners amazon \
+#     --filters "Name=name,Values=al2023-ami-2023*-x86_64" \
+#     --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text
+runner_ami_id              = "ami-XXXXXXXXXXXXXXX"
+runner_instance_type       = "t3.medium"
+runner_root_volume_size_gb = 30
+
+# ASG sizing
+min_runners     = 1
+max_runners     = 10
+desired_runners = 2
+
+# Observability
+log_retention_days = 90
