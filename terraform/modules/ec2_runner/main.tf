@@ -61,7 +61,8 @@ resource "aws_launch_template" "runner" {
   }
 
   metadata_options {
-    http_tokens                 = "required"  # IMDSv2 enforced
+    # IMDSv2 enforced — instance metadata requires a signed token
+    http_tokens                 = "required"
     http_endpoint               = "enabled"
     http_put_response_hop_limit = 1
   }
