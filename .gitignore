@@ -1,2 +1,18 @@
-.terraform
-.terraform.*
+# Terraform local state and provider cache — never commit these
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Lock file should be committed; listed here only as documentation
+# .terraform.lock.hcl
+
+# Sensitive variable files
+*.tfvars
+*.tfvars.json
