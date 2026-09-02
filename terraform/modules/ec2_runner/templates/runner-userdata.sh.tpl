@@ -30,7 +30,23 @@ dnf install -y \
   unzip \
   libicu \
   openssl \
-  amazon-cloudwatch-agent
+  amazon-cloudwatch-agent \
+  perl-Digest-SHA \
+  dnf-plugins-core
+
+# ── Docker Engine ─────────────────────────────────────────────────────────────
+dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
+
+# ── kubectl ───────────────────────────────────────────────────────────────────
+KUBECTL_VERSION=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
+curl -fsSL "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+  -o /usr/local/bin/kubectl
+chmod 0755 /usr/local/bin/kubectl
+
+# ── Helm ──────────────────────────────────────────────────────────────────────
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
 # Install AWS CLI v2 (already present on AL2023; skip if found)
 if ! command -v aws &>/dev/null; then
@@ -44,6 +60,8 @@ fi
 if ! id -u runner &>/dev/null; then
   useradd -m -d "$RUNNER_HOME" -s /bin/bash -U runner
 fi
+# Add runner to docker group so jobs can use Docker without sudo
+usermod -aG docker runner
 
 # ── Fetch registration token from Secrets Manager ─────────────────────────────
 GITHUB_TOKEN=$(aws secretsmanager get-secret-value \
@@ -58,6 +76,13 @@ RUNNER_URL="https://github.com/actions/runner/releases/download/v$${RUNNER_VERSI
 
 mkdir -p "$RUNNER_HOME"
 curl -fsSL "$RUNNER_URL" -o "/tmp/$RUNNER_ARCHIVE"
+
+# ── Verify tarball SHA-256 ────────────────────────────────────────────────────
+RUNNER_CHECKSUM=$(curl -fsSL \
+  "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz.sha256" \
+  | awk '{print $1}')
+echo "$${RUNNER_CHECKSUM}  /tmp/$${RUNNER_ARCHIVE}" | sha256sum -c -
+
 tar -xzf "/tmp/$RUNNER_ARCHIVE" -C "$RUNNER_HOME"
 rm -f "/tmp/$RUNNER_ARCHIVE"
 chown -R runner:runner "$RUNNER_HOME"

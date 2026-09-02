@@ -65,7 +65,7 @@ variable "runner_group" {
 variable "runner_version" {
   description = "Version of the GitHub Actions runner binary to install (e.g. 2.317.0)."
   type        = string
-  default     = "2.317.0"
+  default     = "2.336.0"
 }
 
 variable "runner_os" {
