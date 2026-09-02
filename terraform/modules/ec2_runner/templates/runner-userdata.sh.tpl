@@ -23,7 +23,7 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting GitHub Actions runner bootstrap"
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 dnf update -y --security
 dnf install -y \
-  curl \
+  curl-minimal \
   jq \
   git \
   tar \
