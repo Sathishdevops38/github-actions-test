@@ -120,9 +120,9 @@ data "aws_iam_policy_document" "kms_cloudwatch_logs" {
   # Root account admin access — required so the key remains manageable.
   # Without this statement aws_kms_key_policy would lock out all IAM principals.
   statement {
-    sid    = "EnableRootAccess"
-    effect = "Allow"
-    actions = ["kms:*"]
+    sid       = "EnableRootAccess"
+    effect    = "Allow"
+    actions   = ["kms:*"]
     resources = ["*"]
 
     principals {
