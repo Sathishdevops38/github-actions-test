@@ -112,11 +112,23 @@ data "aws_caller_identity" "current" {}
 # KMS key policy — allows CloudWatch Logs service principal to use the key.
 # aws_kms_grant does not support service principals (only IAM role/user ARNs);
 # a key policy statement is required for logs.amazonaws.com.
-# This appends to the existing key policy without replacing it.
+#
+# aws_kms_key_policy REPLACES the entire key policy, so we must read the
+# existing policy first and merge our new statement into it via
+# source_policy_documents — otherwise the root/admin statements are stripped
+# and KMS rejects the update with MalformedPolicyDocumentException.
 # --------------------------------------------------------------------------
 data "aws_region" "current" {}
 
+data "aws_kms_key" "runners" {
+  key_id = var.kms_key_arn
+}
+
 data "aws_iam_policy_document" "kms_cloudwatch_logs" {
+  # Preserve every statement already in the key policy
+  source_policy_documents = [data.aws_kms_key.runners.policy]
+
+  # Add the CloudWatch Logs service principal statement
   statement {
     sid    = "AllowCloudWatchLogsKMS"
     effect = "Allow"
