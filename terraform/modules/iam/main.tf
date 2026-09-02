@@ -120,13 +120,13 @@ data "aws_caller_identity" "current" {}
 # --------------------------------------------------------------------------
 data "aws_region" "current" {}
 
-data "aws_kms_key" "runners" {
+data "aws_kms_key_policy" "runners" {
   key_id = var.kms_key_arn
 }
 
 data "aws_iam_policy_document" "kms_cloudwatch_logs" {
   # Preserve every statement already in the key policy
-  source_policy_documents = [data.aws_kms_key.runners.policy]
+  source_policy_documents = [data.aws_kms_key_policy.runners.policy]
 
   # Add the CloudWatch Logs service principal statement
   statement {
