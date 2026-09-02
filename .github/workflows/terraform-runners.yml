@@ -130,12 +130,17 @@ jobs:
             -backend-config="kms_key_id=${{ secrets.TF_STATE_KMS_KEY_ID }}"
         working-directory: ${{ env.TF_WORKING_DIR }}
 
-      - name: Clear stale state lock (if any)
+      - name: Force-unlock stale state lock (if any)
         run: |
           LOCK_KEY="github-actions-runners/${{ github.event.inputs.environment || 'prod' }}/terraform.tfstate.tflock"
-          if aws s3api head-object --bucket "${{ secrets.TF_STATE_BUCKET }}" --key "$LOCK_KEY" 2>/dev/null; then
-            echo "Stale lock found — removing s3://${{ secrets.TF_STATE_BUCKET }}/$LOCK_KEY"
-            aws s3 rm "s3://${{ secrets.TF_STATE_BUCKET }}/$LOCK_KEY"
+          LOCK_JSON=$(aws s3api get-object \
+            --bucket "${{ secrets.TF_STATE_BUCKET }}" \
+            --key "$LOCK_KEY" \
+            /tmp/tflock.json 2>/dev/null && cat /tmp/tflock.json || echo "")
+          if [ -n "$LOCK_JSON" ]; then
+            LOCK_ID=$(echo "$LOCK_JSON" | jq -r '.ID')
+            echo "Stale lock found (ID: $LOCK_ID) — force-unlocking..."
+            terraform force-unlock -force "$LOCK_ID"
           else
             echo "No stale lock present."
           fi

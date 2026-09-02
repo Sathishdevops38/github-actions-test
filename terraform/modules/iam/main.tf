@@ -51,6 +51,7 @@ data "aws_iam_policy_document" "runner_secrets" {
       "kms:Decrypt",
       "kms:DescribeKey",
       "kms:CreateGrant",
+      "kms:GenerateDataKey",
       "kms:GenerateDataKeyWithoutPlaintext",
       "kms:ReEncrypt*",
     ]
@@ -106,6 +107,28 @@ resource "aws_kms_grant" "asg" {
 }
 
 data "aws_caller_identity" "current" {}
+
+# --------------------------------------------------------------------------
+# KMS grant — allows CloudWatch Logs to encrypt log groups with the KMS key.
+# The logs.amazonaws.com service principal must be granted access explicitly;
+# the runner IAM role permissions are insufficient for this.
+# --------------------------------------------------------------------------
+resource "aws_kms_grant" "cloudwatch_logs" {
+  name              = "${var.name_prefix}-cwlogs-ebs-grant"
+  key_id            = var.kms_key_arn
+  grantee_principal = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:*"
+
+  operations = [
+    "Decrypt",
+    "DescribeKey",
+    "GenerateDataKey",
+    "GenerateDataKeyWithoutPlaintext",
+    "ReEncryptFrom",
+    "ReEncryptTo",
+  ]
+}
+
+data "aws_region" "current" {}
 
 # Optional: allow runner to push ECR images / describe ECR (append additional
 # managed policies via var.extra_policy_arns if needed)
