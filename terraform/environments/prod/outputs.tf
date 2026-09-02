@@ -45,5 +45,5 @@ output "github_token_secret_arn" {
 
 output "kms_key_arn" {
   description = "ARN of the KMS key protecting runner resources."
-  value       = aws_kms_key.runners.arn
+  value       = data.aws_kms_alias.runners.target_key_arn
 }

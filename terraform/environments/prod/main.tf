@@ -8,21 +8,11 @@ locals {
 }
 
 # --------------------------------------------------------------------------
-# KMS key — encrypts EBS volumes, Secrets Manager secrets, CloudWatch Logs
+# KMS key — pre-existing, managed outside Terraform.
+# Looked up by the alias that was created manually.
 # --------------------------------------------------------------------------
-resource "aws_kms_key" "runners" {
-  description             = "KMS key for GitHub Actions runner resources"
-  deletion_window_in_days = 14
-  enable_key_rotation     = true
-
-  tags = {
-    Name = "${var.name_prefix}-runner-kms"
-  }
-}
-
-resource "aws_kms_alias" "runners" {
-  name          = "alias/${var.name_prefix}-runner"
-  target_key_id = aws_kms_key.runners.key_id
+data "aws_kms_alias" "runners" {
+  name = "alias/gh-runner-runner"
 }
 
 # --------------------------------------------------------------------------
@@ -35,7 +25,7 @@ resource "aws_kms_alias" "runners" {
 resource "aws_secretsmanager_secret" "github_token" {
   name                    = "/${var.name_prefix}/github-runner-token"
   description             = "GitHub Actions runner registration token / PAT"
-  kms_key_id              = aws_kms_key.runners.arn
+  kms_key_id              = data.aws_kms_alias.runners.target_key_arn
   recovery_window_in_days = 7
 
   tags = {
@@ -77,7 +67,7 @@ module "iam" {
 
   name_prefix             = var.name_prefix
   github_token_secret_arn = aws_secretsmanager_secret.github_token.arn
-  kms_key_arn             = aws_kms_key.runners.arn
+  kms_key_arn             = data.aws_kms_alias.runners.target_key_arn
   extra_policy_arns       = var.extra_policy_arns
   tags                    = local.common_tags
 }
@@ -95,7 +85,7 @@ module "ec2_runner" {
   subnet_ids              = module.vpc.private_subnet_ids
   security_group_id       = module.security_group.runner_sg_id
   instance_profile_name   = module.iam.runner_instance_profile_name
-  kms_key_arn             = aws_kms_key.runners.arn
+  kms_key_arn             = data.aws_kms_alias.runners.target_key_arn
   github_token_secret_arn = aws_secretsmanager_secret.github_token.arn
   github_owner            = var.github_owner
   github_repo             = var.github_repo
