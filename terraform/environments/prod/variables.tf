@@ -13,6 +13,7 @@ variable "environment" {
 variable "owner" {
   description = "Team or individual responsible for this infrastructure."
   type        = string
+  default     = "individual"
 }
 
 variable "name_prefix" {
