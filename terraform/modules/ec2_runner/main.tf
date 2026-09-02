@@ -121,8 +121,8 @@ resource "aws_autoscaling_group" "runner" {
 
   dynamic "tag" {
     for_each = merge(var.tags, {
-      Name                                        = "${var.name_prefix}-runner"
-      "github:runner-group"                       = var.runner_group
+      Name                  = "${var.name_prefix}-runner"
+      "github:runner-group" = var.runner_group
     })
     content {
       key                 = tag.key
