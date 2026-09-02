@@ -216,6 +216,7 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Apply
 
       - name: Download plan artifact
         uses: actions/download-artifact@v4

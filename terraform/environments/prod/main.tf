@@ -16,21 +16,11 @@ data "aws_kms_alias" "runners" {
 }
 
 # --------------------------------------------------------------------------
-# Secrets Manager — GitHub runner registration token
-# Store the token via AWS CLI / Console; Terraform only references the ARN.
-# aws secretsmanager create-secret \
-#   --name /github-actions/runner-token \
-#   --secret-string "<YOUR_GITHUB_PAT_WITH_REPO_SCOPE>"
+# Secrets Manager — pre-existing, managed outside Terraform.
+# Looked up by name; the secret value is populated manually via AWS CLI/Console.
 # --------------------------------------------------------------------------
-resource "aws_secretsmanager_secret" "github_token" {
-  name                    = "/${var.name_prefix}/github-runner-token"
-  description             = "GitHub Actions runner registration token / PAT"
-  kms_key_id              = data.aws_kms_alias.runners.target_key_arn
-  recovery_window_in_days = 7
-
-  tags = {
-    Name = "${var.name_prefix}-github-runner-token"
-  }
+data "aws_secretsmanager_secret" "github_token" {
+  name = "/${var.name_prefix}/github-runner-token"
 }
 
 # --------------------------------------------------------------------------
@@ -66,7 +56,7 @@ module "iam" {
   source = "../../modules/iam"
 
   name_prefix             = var.name_prefix
-  github_token_secret_arn = aws_secretsmanager_secret.github_token.arn
+  github_token_secret_arn = data.aws_secretsmanager_secret.github_token.arn
   kms_key_arn             = data.aws_kms_alias.runners.target_key_arn
   extra_policy_arns       = var.extra_policy_arns
   tags                    = local.common_tags
@@ -86,7 +76,7 @@ module "ec2_runner" {
   security_group_id       = module.security_group.runner_sg_id
   instance_profile_name   = module.iam.runner_instance_profile_name
   kms_key_arn             = data.aws_kms_alias.runners.target_key_arn
-  github_token_secret_arn = aws_secretsmanager_secret.github_token.arn
+  github_token_secret_arn = data.aws_secretsmanager_secret.github_token.arn
   github_owner            = var.github_owner
   github_repo             = var.github_repo
   runner_group            = var.runner_group

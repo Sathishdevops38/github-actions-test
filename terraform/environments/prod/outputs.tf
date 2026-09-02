@@ -40,7 +40,7 @@ output "cloudwatch_log_group_name" {
 
 output "github_token_secret_arn" {
   description = "ARN of the Secrets Manager secret for the GitHub runner token."
-  value       = aws_secretsmanager_secret.github_token.arn
+  value       = data.aws_secretsmanager_secret.github_token.arn
 }
 
 output "kms_key_arn" {
