@@ -107,7 +107,7 @@ variable "max_runners" {
 variable "desired_runners" {
   description = "Desired number of runner instances at launch."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "log_retention_days" {
