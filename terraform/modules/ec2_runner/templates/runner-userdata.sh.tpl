@@ -43,15 +43,11 @@ dnf install -y \
   amazon-cloudwatch-agent
 
 # ── Docker Engine ─────────────────────────────────────────────────────────────
-# Write the repo file directly with curl — no dnf config-manager needed.
-# --allowerasing lets dnf replace curl-minimal with the full curl package
-# that docker-ce-cli requires.
-curl -fsSL https://download.docker.com/linux/amzn/docker-ce.repo \
-  -o /etc/yum.repos.d/docker-ce.repo
+# AL2023 ships Docker in its default repos — no external repo needed.
+# docker-buildx-plugin and docker-compose-plugin come from the same repo.
+# --allowerasing lets dnf swap curl-minimal → curl (required by docker-ce-cli).
 dnf install -y --allowerasing \
-  docker-ce \
-  docker-ce-cli \
-  containerd.io \
+  docker \
   docker-buildx-plugin \
   docker-compose-plugin
 systemctl enable --now docker
