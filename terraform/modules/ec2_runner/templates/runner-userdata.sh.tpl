@@ -114,11 +114,14 @@ RUNNER_URL="https://github.com/actions/runner/releases/download/v$${RUNNER_VERSI
 # curl -o actions-runner-linux-x64-2.337.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz
 curl -o "$${RUNNER_ARCHIVE}" -L "$RUNNER_URL"
 
-# Validate the hash (shasum -a 256 -c, matching the published checksum for 2.337.0)
+# Validate the hash — fetch the SHA-256 sidecar GitHub publishes for every release.
 # echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  actions-runner-linux-x64-2.337.0.tar.gz" | shasum -a 256 -c
-RUNNER_CHECKSUM=$(curl -fsSL \
-  "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz.sha256" \
-  | awk '{print $1}')
+SIDECAR_URL="https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz.sha256"
+RUNNER_CHECKSUM=$(curl -fsSL "$SIDECAR_URL" | awk '{print $1}')
+if [[ -z "$RUNNER_CHECKSUM" ]]; then
+  echo "ERROR: could not fetch checksum from $SIDECAR_URL — aborting to prevent running an unverified binary." >&2
+  exit 1
+fi
 echo "$${RUNNER_CHECKSUM}  $${RUNNER_ARCHIVE}" | shasum -a 256 -c
 
 # Extract the installer

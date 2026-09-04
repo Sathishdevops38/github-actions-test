@@ -72,7 +72,7 @@ variable "github_owner" {
 variable "github_repo" {
   description = "GitHub repository name (omit for org-level runners)."
   type        = string
-  default     = ""
+  default     = "github-actions-test"
 }
 
 variable "runner_group" {
@@ -84,7 +84,7 @@ variable "runner_group" {
 variable "runner_version" {
   description = "GitHub Actions runner binary version."
   type        = string
-  default     = "2.317.0"
+  default     = "2.337.0"
 }
 
 variable "runner_os" {
