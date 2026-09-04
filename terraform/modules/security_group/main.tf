@@ -12,25 +12,16 @@ resource "aws_security_group" "runner" {
   }
 }
 
-# Runners must reach GitHub APIs and package registries (HTTPS outbound only).
-# No inbound rules are needed — SSM Session Manager provides shell access
-# without opening port 22.
-resource "aws_vpc_security_group_egress_rule" "https" {
+# ── Egress ────────────────────────────────────────────────────────────────────
+# Runners initiate all connections outbound (GitHub APIs, package registries,
+# AWS Secrets Manager, CloudWatch, SSM). Allow all outbound so no bootstrap
+# step is silently blocked by a missing port rule.
+# Inbound is intentionally empty — instances are in private subnets with no
+# public IP; SSM Session Manager provides shell access without opening any port.
+resource "aws_vpc_security_group_egress_rule" "all_outbound" {
   security_group_id = aws_security_group.runner.id
-  description       = "Allow HTTPS outbound (GitHub, package registries)"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-  cidr_ipv4         = "0.0.0.0/0"
-  tags              = var.tags
-}
-
-resource "aws_vpc_security_group_egress_rule" "http" {
-  security_group_id = aws_security_group.runner.id
-  description       = "Allow HTTP outbound (package mirrors)"
-  ip_protocol       = "tcp"
-  from_port         = 80
-  to_port           = 80
+  description       = "Allow all outbound traffic (NAT Gateway provides internet egress)"
+  ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
   tags              = var.tags
 }
