@@ -110,16 +110,16 @@ set -x
 cd "$RUNNER_HOME"
 pwd
 RUNNER_ARCHIVE="actions-runner-linux-x64-2.337.0.tar.gz"
-curl -fsSL "https://github.com/actions/runner/releases/download/v2.337.0/${RUNNER_ARCHIVE}" \
+curl -fsSL "https://github.com/actions/runner/releases/download/v2.337.0/$${RUNNER_ARCHIVE}" \
   -o "$RUNNER_ARCHIVE"
-echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  ${RUNNER_ARCHIVE}" | shasum -a 256 -c
+echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  $${RUNNER_ARCHIVE}" | shasum -a 256 -c
 tar xzf "$RUNNER_ARCHIVE"
 chown -R runner:runner "$RUNNER_HOME"
 
 # Register and run the agent as the dedicated non-root user.
-GITHUB_URL="https://github.com/${GITHUB_OWNER}"
+GITHUB_URL="https://github.com/$${GITHUB_OWNER}"
 if [[ -n "$GITHUB_REPO" ]]; then
-  GITHUB_URL="${GITHUB_URL}/${GITHUB_REPO}"
+  GITHUB_URL="$${GITHUB_URL}/$${GITHUB_REPO}"
 fi
 
 set +x
@@ -134,7 +134,7 @@ RUNNER_CONFIG_ARGS=(
 if [[ "$EPHEMERAL" == "true" ]]; then
   RUNNER_CONFIG_ARGS+=(--ephemeral)
 fi
-runuser -u runner -- ./config.sh "${RUNNER_CONFIG_ARGS[@]}"
+runuser -u runner -- ./config.sh "$${RUNNER_CONFIG_ARGS[@]}"
 set -x
 runuser -u runner -- bash -c 'nohup ./run.sh > /tmp/actions-runner.log 2>&1 &'
 
