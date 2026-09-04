@@ -7,13 +7,12 @@ locals {
 # registers it against the repository or organisation defined in variables.
 # The registration token is fetched at boot from Secrets Manager.
 # --------------------------------------------------------------------------
-data "aws_secretsmanager_secret_version" "github_token" {
-  secret_id = var.github_token_secret_arn
-}
 
-# We reference the secret ARN only for the IAM policy; the actual secret value
-# is fetched at instance boot via the user-data script so it is never stored
-# in Terraform state.
+# NOTE: aws_secretsmanager_secret_version is intentionally NOT read here.
+# Reading it on every plan causes the user_data hash to change whenever the
+# secret is rotated, which triggers a launch template update and instance
+# refresh (EC2 recreation). The actual secret value is fetched at instance
+# boot by the user-data script and is never stored in Terraform state.
 
 data "aws_region" "current" {}
 
@@ -35,7 +34,9 @@ locals {
 # Launch Template
 # --------------------------------------------------------------------------
 resource "aws_launch_template" "runner" {
-  name_prefix   = "${var.name_prefix}-runner-lt-"
+  # Use a stable name (not name_prefix) so Terraform does not force-replace
+  # the launch template — and trigger an instance refresh — on every apply.
+  name          = "${var.name_prefix}-runner-lt"
   image_id      = var.ami_id
   instance_type = var.instance_type
 
@@ -114,6 +115,10 @@ resource "aws_autoscaling_group" "runner" {
 
   instance_refresh {
     strategy = "Rolling"
+    # Only trigger a rolling replacement when user_data actually changes.
+    # Without explicit triggers, any launch template version bump (tags,
+    # metadata tweaks, etc.) would replace all running instances.
+    triggers = ["launch_template"]
     preferences {
       min_healthy_percentage = 50
     }
