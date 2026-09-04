@@ -43,11 +43,22 @@ dnf install -y \
   amazon-cloudwatch-agent
 
 # ── Docker Engine ─────────────────────────────────────────────────────────────
-# AL2023 ships Docker in its default repos — no external repo needed.
-# docker-buildx-plugin and docker-compose-plugin come from the same repo.
-# --allowerasing lets dnf swap curl-minimal → curl (required by docker-ce-cli).
+# AL2023 ships the core docker package natively; the buildx/compose plugins
+# live in Docker's official RHEL9 repo (AL2023 is RHEL9-compatible).
+# We pin releasever=9 so dnf resolves the correct RHEL repo metadata.
+cat > /etc/yum.repos.d/docker-ce.repo << 'DOCKERREPO'
+[docker-ce-stable]
+name=Docker CE Stable - $basearch
+baseurl=https://download.docker.com/linux/rhel/9/$basearch/stable
+enabled=1
+gpgcheck=1
+gpgkey=https://download.docker.com/linux/rhel/gpg
+DOCKERREPO
+
 dnf install -y --allowerasing \
-  docker \
+  docker-ce \
+  docker-ce-cli \
+  containerd.io \
   docker-buildx-plugin \
   docker-compose-plugin
 systemctl enable --now docker
@@ -63,9 +74,10 @@ curl -fsSL "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl" 
 chmod 0755 /usr/local/bin/kubectl
 
 # ── Helm ──────────────────────────────────────────────────────────────────────
-# Subshell + || true: prevents pipefail from treating a non-zero exit
-# from get-helm-3 (e.g. "already installed" path) as a fatal error.
-(curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash) || true
+# Subshell isolates pipefail; log failure but do not abort the bootstrap.
+if ! (curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash); then
+  echo "[WARN] Helm install returned non-zero — continuing without Helm" >&2
+fi
 
 # ── AWS CLI v2 (pre-installed on AL2023; skip if already present) ─────────────
 if ! command -v aws &>/dev/null; then

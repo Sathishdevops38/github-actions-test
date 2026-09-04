@@ -28,6 +28,11 @@ locals {
     aws_region              = data.aws_region.current.name
     ephemeral               = var.ephemeral_runners
   }))
+
+  # SHA-256 of the rendered user_data used as a change trigger.
+  # When user_data changes this hash changes → launch template is updated →
+  # instance_refresh fires → running instances are replaced with the new config.
+  user_data_hash = sha256(local.user_data)
 }
 
 # --------------------------------------------------------------------------
@@ -90,9 +95,20 @@ resource "aws_launch_template" "runner" {
 
   lifecycle {
     create_before_destroy = true
+    # Force a new launch template version (and therefore an instance refresh)
+    # whenever user_data content changes. Without this, in-place LT updates
+    # do not always propagate to the ASG's instance refresh trigger.
+    replace_triggered_by = [terraform_data.user_data_version]
   }
 
   tags = var.tags
+}
+
+# Sentinel resource — its value is the user_data hash. When user_data changes
+# the hash changes, this resource is replaced, and the launch template
+# replace_triggered_by fires, guaranteeing a fresh LT version every time.
+resource "terraform_data" "user_data_version" {
+  input = local.user_data_hash
 }
 
 # --------------------------------------------------------------------------
