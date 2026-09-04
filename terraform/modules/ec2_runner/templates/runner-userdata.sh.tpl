@@ -23,7 +23,6 @@ echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting GitHub Actions runner bootstrap"
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 dnf update -y --security
 dnf install -y \
-  curl-minimal \
   jq \
   git \
   tar \
@@ -31,12 +30,13 @@ dnf install -y \
   libicu \
   openssl \
   amazon-cloudwatch-agent \
-  perl-Digest-SHA \
   dnf-plugins-core
 
 # ── Docker Engine ─────────────────────────────────────────────────────────────
-dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
-dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+# Use the Amazon Linux–specific Docker repo; --allowerasing lets dnf replace
+# curl-minimal with the full curl package that docker-ce-cli requires.
+dnf config-manager --add-repo https://download.docker.com/linux/amzn/docker-ce.repo
+dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
 
 # ── kubectl ───────────────────────────────────────────────────────────────────
@@ -128,8 +128,10 @@ sudo -u runner bash -c "
 "
 
 # ── Install and start the runner service ─────────────────────────────────────
-"$RUNNER_HOME/svc.sh" install runner
-"$RUNNER_HOME/svc.sh" start
+# svc.sh resolves paths relative to CWD — must be run from RUNNER_HOME
+cd "$RUNNER_HOME"
+./svc.sh install runner
+./svc.sh start
 
 # ── CloudWatch Agent config (stream logs) ─────────────────────────────────────
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWCONF'
