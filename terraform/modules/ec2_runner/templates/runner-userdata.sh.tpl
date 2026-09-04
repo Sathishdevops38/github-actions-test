@@ -17,7 +17,13 @@ EPHEMERAL="${ephemeral}"
 RUNNER_HOME="/opt/actions-runner"
 LOG_FILE="/var/log/runner-bootstrap.log"
 
-exec > >(tee -a "$LOG_FILE") 2>&1
+# Redirect all output to log file AND to cloud-init's journal.
+# We avoid process-substitution (exec > >(tee ...)) because cloud-init closes
+# stdout before the tee subshell drains, producing empty Stdout in the log.
+mkdir -p "$(dirname "$LOG_FILE")"
+exec > "$LOG_FILE" 2>&1
+set -x   # trace every command into the log for easy debugging
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting GitHub Actions runner bootstrap"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
@@ -33,20 +39,28 @@ dnf install -y \
   dnf-plugins-core
 
 # ── Docker Engine ─────────────────────────────────────────────────────────────
-# Use the Amazon Linux–specific Docker repo; --allowerasing lets dnf replace
-# curl-minimal with the full curl package that docker-ce-cli requires.
-dnf config-manager --add-repo https://download.docker.com/linux/amzn/docker-ce.repo
+# Download the repo file directly — avoids dnf config-manager redirect issues
+# and the dependency on python3-dnf-plugins-core being active in the same session.
+# --allowerasing lets dnf swap curl-minimal → curl which docker-ce-cli requires.
+curl -fsSL https://download.docker.com/linux/amzn/docker-ce.repo \
+  -o /etc/yum.repos.d/docker-ce.repo
 dnf install -y --allowerasing docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
 
 # ── kubectl ───────────────────────────────────────────────────────────────────
 KUBECTL_VERSION=$(curl -fsSL https://dl.k8s.io/release/stable.txt)
+if [ -z "$${KUBECTL_VERSION}" ]; then
+  echo "ERROR: could not resolve kubectl stable version" >&2
+  exit 1
+fi
 curl -fsSL "https://dl.k8s.io/release/$${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
   -o /usr/local/bin/kubectl
 chmod 0755 /usr/local/bin/kubectl
 
 # ── Helm ──────────────────────────────────────────────────────────────────────
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# Run in a subshell so pipefail does not treat a non-zero exit from the
+# installer (e.g. "helm already installed") as a fatal script error.
+(curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash) || true
 
 # Install AWS CLI v2 (already present on AL2023; skip if found)
 if ! command -v aws &>/dev/null; then
