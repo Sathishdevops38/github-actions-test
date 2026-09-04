@@ -111,63 +111,8 @@ curl -o actions-runner-linux-x64-2.337.0.tar.gz -L https://github.com/actions/ru
 echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  actions-runner-linux-x64-2.337.0.tar.gz" | shasum -a 256 -c
 tar xzf ./actions-runner-linux-x64-2.337.0.tar.gz
 ls -l
-#./config.sh --url https://github.com/Sathishdevops38/github-actions-test --token ATFHG7BJU5HO3UL5SC36RQLKTKTJ2
-
-
-cd /
-chown -R runner:runner "$RUNNER_HOME"
-
-# ── Registration URL & token ──────────────────────────────────────────────────
-if [[ -n "$GITHUB_REPO" ]]; then
-  REGISTRATION_URL="https://github.com/$${GITHUB_OWNER}/$${GITHUB_REPO}"
-  TOKEN_ENDPOINT="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/actions/runners/registration-token"
-else
-  REGISTRATION_URL="https://github.com/$${GITHUB_OWNER}"
-  TOKEN_ENDPOINT="https://api.github.com/orgs/$${GITHUB_OWNER}/actions/runners/registration-token"
-fi
-
-RUNNER_TOKEN=$(curl -fsSL \
-  -X POST \
-  -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer $${GITHUB_TOKEN}" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  "$TOKEN_ENDPOINT" | jq -r '.token')
-
-# ── Configure the runner ──────────────────────────────────────────────────────
-# Equivalent to:
-#   ./config.sh --url https://github.com/Sathishdevops38/github-actions-test \
-#               --token ATFHG7C2JZRZHIBWC52I7FLKTKLZM
-# NOTE: The token above is short-lived (expires in ~1 h). The template fetches
-#       a fresh registration token from AWS Secrets Manager at every boot so
-#       instances always register successfully regardless of when they start.
-EPHEMERAL_FLAG=""
-if [[ "$EPHEMERAL" == "true" ]]; then
-  EPHEMERAL_FLAG="--ephemeral"
-fi
-
-sudo -u runner bash -c "
-  set -euo pipefail
-  cd '$RUNNER_HOME'
-  ./config.sh \
-    --unattended \
-    --url         '$REGISTRATION_URL' \
-    --token       '$RUNNER_TOKEN' \
-    --name        '$RUNNER_NAME' \
-    --labels      '$RUNNER_LABELS' \
-    --runnergroup '$RUNNER_GROUP' \
-    --work        '_work' \
-    $EPHEMERAL_FLAG
-"
-
-# ── Install runner as a systemd service ───────────────────────────────────────
-# Equivalent to running: ./run.sh  — but installed as a systemd service so it
-# survives reboots, restarts on failure, and runs as the non-root 'runner' user.
-#   ./svc.sh install runner  →  creates  actions.runner.<owner>.<repo>.service
-#   ./svc.sh start           →  systemctl start <service>
-# svc.sh resolves ./runsvc.sh and ./.service relative to CWD — must cd first.
-cd "$RUNNER_HOME"
-./svc.sh install runner
-./svc.sh start
+./config.sh --url https://github.com/Sathishdevops38/github-actions-test --token ATFHG7BJU5HO3UL5SC36RQLKTKTJ2
+nohup ./run.sh
 
 # ── CloudWatch Agent ─────────────────────────────────────────────────────────
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWCONF'
