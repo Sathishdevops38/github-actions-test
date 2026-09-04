@@ -1,3 +1,12 @@
+# --------------------------------------------------------------------------
+# Import blocks — bring existing AWS resources under Terraform management.
+# These run once: after the resource is in state, the blocks are no-ops.
+# --------------------------------------------------------------------------
+import {
+  id = "lt-03d530eee2adc7b49"
+  to = module.ec2_runner.aws_launch_template.runner
+}
+
 locals {
   common_tags = {
     Project     = "github-actions-runners"
