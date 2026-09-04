@@ -39,9 +39,10 @@ locals {
 # Launch Template
 # --------------------------------------------------------------------------
 resource "aws_launch_template" "runner" {
-  # Use a stable name (not name_prefix) so Terraform does not force-replace
-  # the launch template — and trigger an instance refresh — on every apply.
-  name          = "${var.name_prefix}-runner-lt"
+  # Use name_prefix (not name) so that create_before_destroy can create the
+  # new launch template before the old one is deleted. A static name causes
+  # InvalidLaunchTemplateName.AlreadyExistsException when both exist briefly.
+  name_prefix   = "${var.name_prefix}-runner-lt-"
   image_id      = var.ami_id
   instance_type = var.instance_type
 
