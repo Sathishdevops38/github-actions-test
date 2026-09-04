@@ -37,6 +37,8 @@ dnf install -y \
   jq \
   git \
   tar \
+  perl-Digest-SHA \
+  libicu \
   unzip \
   libicu \
   openssl \
@@ -103,31 +105,12 @@ GITHUB_TOKEN=$(aws secretsmanager get-secret-value \
   --output     text)
 
 # ── Download & verify runner tarball ─────────────────────────────────────────
-# Create the runner folder (equivalent to: mkdir actions-runner && cd actions-runner)
-mkdir -p "$RUNNER_HOME"
-cd "$RUNNER_HOME"
 
-RUNNER_ARCHIVE="actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz"
-RUNNER_URL="https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/$${RUNNER_ARCHIVE}"
+curl -o actions-runner-linux-x64-2.337.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz
+echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  actions-runner-linux-x64-2.337.0.tar.gz" | shasum -a 256 -c
+tar xzf ./actions-runner-linux-x64-2.337.0.tar.gz
+./config.sh --url https://github.com/Sathishdevops38/github-actions-test --token ATFHG7BJU5HO3UL5SC36RQLKTKTJ2
 
-# Download the runner package
-# curl -o actions-runner-linux-x64-2.337.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz
-curl -o "$${RUNNER_ARCHIVE}" -L "$RUNNER_URL"
-
-# Validate the hash — fetch the SHA-256 sidecar GitHub publishes for every release.
-# echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  actions-runner-linux-x64-2.337.0.tar.gz" | shasum -a 256 -c
-SIDECAR_URL="https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz.sha256"
-RUNNER_CHECKSUM=$(curl -fsSL "$SIDECAR_URL" | awk '{print $1}')
-if [[ -z "$RUNNER_CHECKSUM" ]]; then
-  echo "ERROR: could not fetch checksum from $SIDECAR_URL — aborting to prevent running an unverified binary." >&2
-  exit 1
-fi
-echo "$${RUNNER_CHECKSUM}  $${RUNNER_ARCHIVE}" | shasum -a 256 -c
-
-# Extract the installer
-# tar xzf ./actions-runner-linux-x64-2.337.0.tar.gz
-tar xzf "./$${RUNNER_ARCHIVE}"
-rm -f "./$${RUNNER_ARCHIVE}"
 
 cd /
 chown -R runner:runner "$RUNNER_HOME"
