@@ -105,7 +105,7 @@ GITHUB_TOKEN=$(aws secretsmanager get-secret-value \
   --output     text)
 
 # ── Download & verify runner tarball ─────────────────────────────────────────
-mkdir "$RUNNER_HOME" && cd "$RUNNER_HOME"
+cd "$RUNNER_HOME"
 pwd
 curl -o actions-runner-linux-x64-2.337.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz
 echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  actions-runner-linux-x64-2.337.0.tar.gz" | shasum -a 256 -c
