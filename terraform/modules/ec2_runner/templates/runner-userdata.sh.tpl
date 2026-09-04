@@ -111,7 +111,7 @@ curl -o actions-runner-linux-x64-2.337.0.tar.gz -L https://github.com/actions/ru
 echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  actions-runner-linux-x64-2.337.0.tar.gz" | shasum -a 256 -c
 tar xzf ./actions-runner-linux-x64-2.337.0.tar.gz
 ls -l
-sudo ./config.sh --url https://github.com/Sathishdevops38/github-actions-test --token ATFHG7BJU5HO3UL5SC36RQLKTKTJ2
+./config.sh --url https://github.com/Sathishdevops38/github-actions-test --token ATFHG7BJU5HO3UL5SC36RQLKTKTJ2
 sudo nohup ./run.sh
 
 # ── CloudWatch Agent ─────────────────────────────────────────────────────────
