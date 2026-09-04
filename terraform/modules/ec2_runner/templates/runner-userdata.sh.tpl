@@ -103,20 +103,30 @@ GITHUB_TOKEN=$(aws secretsmanager get-secret-value \
   --output     text)
 
 # ── Download & verify runner tarball ─────────────────────────────────────────
+# Create the runner folder (equivalent to: mkdir actions-runner && cd actions-runner)
+mkdir -p "$RUNNER_HOME"
+cd "$RUNNER_HOME"
+
 RUNNER_ARCHIVE="actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz"
 RUNNER_URL="https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/$${RUNNER_ARCHIVE}"
 
-mkdir -p "$RUNNER_HOME"
-curl -fsSL "$RUNNER_URL" -o "/tmp/$RUNNER_ARCHIVE"
+# Download the runner package
+# curl -o actions-runner-linux-x64-2.337.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.337.0/actions-runner-linux-x64-2.337.0.tar.gz
+curl -o "$${RUNNER_ARCHIVE}" -L "$RUNNER_URL"
 
-# Fetch the SHA-256 sidecar published alongside every runner release
+# Validate the hash (shasum -a 256 -c, matching the published checksum for 2.337.0)
+# echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  actions-runner-linux-x64-2.337.0.tar.gz" | shasum -a 256 -c
 RUNNER_CHECKSUM=$(curl -fsSL \
   "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz.sha256" \
   | awk '{print $1}')
-echo "$RUNNER_CHECKSUM  /tmp/$RUNNER_ARCHIVE" | sha256sum -c -
+echo "$${RUNNER_CHECKSUM}  $${RUNNER_ARCHIVE}" | shasum -a 256 -c
 
-tar -xzf "/tmp/$RUNNER_ARCHIVE" -C "$RUNNER_HOME"
-rm -f "/tmp/$RUNNER_ARCHIVE"
+# Extract the installer
+# tar xzf ./actions-runner-linux-x64-2.337.0.tar.gz
+tar xzf "./$${RUNNER_ARCHIVE}"
+rm -f "./$${RUNNER_ARCHIVE}"
+
+cd /
 chown -R runner:runner "$RUNNER_HOME"
 
 # ── Registration URL & token ──────────────────────────────────────────────────
@@ -136,6 +146,12 @@ RUNNER_TOKEN=$(curl -fsSL \
   "$TOKEN_ENDPOINT" | jq -r '.token')
 
 # ── Configure the runner ──────────────────────────────────────────────────────
+# Equivalent to:
+#   ./config.sh --url https://github.com/Sathishdevops38/github-actions-test \
+#               --token ATFHG7C2JZRZHIBWC52I7FLKTKLZM
+# NOTE: The token above is short-lived (expires in ~1 h). The template fetches
+#       a fresh registration token from AWS Secrets Manager at every boot so
+#       instances always register successfully regardless of when they start.
 EPHEMERAL_FLAG=""
 if [[ "$EPHEMERAL" == "true" ]]; then
   EPHEMERAL_FLAG="--ephemeral"
@@ -156,6 +172,10 @@ sudo -u runner bash -c "
 "
 
 # ── Install runner as a systemd service ───────────────────────────────────────
+# Equivalent to running: ./run.sh  — but installed as a systemd service so it
+# survives reboots, restarts on failure, and runs as the non-root 'runner' user.
+#   ./svc.sh install runner  →  creates  actions.runner.<owner>.<repo>.service
+#   ./svc.sh start           →  systemctl start <service>
 # svc.sh resolves ./runsvc.sh and ./.service relative to CWD — must cd first.
 cd "$RUNNER_HOME"
 ./svc.sh install runner
