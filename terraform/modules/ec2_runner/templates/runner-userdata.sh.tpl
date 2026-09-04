@@ -95,15 +95,15 @@ GITHUB_TOKEN=$(aws secretsmanager get-secret-value \
   --output     text)
 
 # ── Download & verify runner tarball ─────────────────────────────────────────
-RUNNER_ARCHIVE="actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz"
-RUNNER_URL="https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/${RUNNER_ARCHIVE}"
+RUNNER_ARCHIVE="actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz"
+RUNNER_URL="https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/$${RUNNER_ARCHIVE}"
 
 mkdir -p "$RUNNER_HOME"
 curl -fsSL "$RUNNER_URL" -o "/tmp/$RUNNER_ARCHIVE"
 
 # Fetch the SHA-256 sidecar published alongside every runner release
 RUNNER_CHECKSUM=$(curl -fsSL \
-  "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz.sha256" \
+  "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz.sha256" \
   | awk '{print $1}')
 echo "$RUNNER_CHECKSUM  /tmp/$RUNNER_ARCHIVE" | sha256sum -c -
 
@@ -113,17 +113,17 @@ chown -R runner:runner "$RUNNER_HOME"
 
 # ── Registration URL & token ──────────────────────────────────────────────────
 if [[ -n "$GITHUB_REPO" ]]; then
-  REGISTRATION_URL="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}"
-  TOKEN_ENDPOINT="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners/registration-token"
+  REGISTRATION_URL="https://github.com/$${GITHUB_OWNER}/$${GITHUB_REPO}"
+  TOKEN_ENDPOINT="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/actions/runners/registration-token"
 else
-  REGISTRATION_URL="https://github.com/${GITHUB_OWNER}"
-  TOKEN_ENDPOINT="https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners/registration-token"
+  REGISTRATION_URL="https://github.com/$${GITHUB_OWNER}"
+  TOKEN_ENDPOINT="https://api.github.com/orgs/$${GITHUB_OWNER}/actions/runners/registration-token"
 fi
 
 RUNNER_TOKEN=$(curl -fsSL \
   -X POST \
   -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+  -H "Authorization: Bearer $${GITHUB_TOKEN}" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   "$TOKEN_ENDPOINT" | jq -r '.token')
 
