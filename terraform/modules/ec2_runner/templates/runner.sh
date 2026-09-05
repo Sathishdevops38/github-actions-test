@@ -91,11 +91,23 @@ usermod -aG docker ec2-user
 
 # ── Fetch GitHub PAT from Secrets Manager ────────────────────────────────────
 set +x   # suppress secret values from the log
-GITHUB_API_TOKEN=$(aws secretsmanager get-secret-value \
+GITHUB_API_TOKEN_RAW=$(aws secretsmanager get-secret-value \
   --secret-id  "$GITHUB_TOKEN_SECRET_ARN" \
   --region     "$AWS_REGION" \
   --query      'SecretString' \
   --output     text)
+
+# If the retrieved secret is a JSON string, try to parse it with jq.
+# It checks for common keys like 'token' or 'github_token'.
+# If jq is not successful or keys do not exist, fall back to the raw string.
+if echo "$GITHUB_API_TOKEN_RAW" | jq -e . >/dev/null 2>&1; then
+  GITHUB_API_TOKEN=$(echo "$GITHUB_API_TOKEN_RAW" | jq -r 'if has("token") then .token elif has("github_token") then .github_token else empty end')
+  if [[ -z "$GITHUB_API_TOKEN" ]]; then
+    GITHUB_API_TOKEN="$GITHUB_API_TOKEN_RAW"
+  fi
+else
+  GITHUB_API_TOKEN="$GITHUB_API_TOKEN_RAW"
+fi
 
 # GitHub requires a short-lived registration token, not a PAT, for config.sh.
 # Org-level when GITHUB_REPO is empty; repo-level otherwise.
