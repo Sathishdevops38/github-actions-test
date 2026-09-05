@@ -107,14 +107,17 @@ GITHUB_API_URL="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/ac
 if [[ -z "$GITHUB_REPO" ]]; then
   GITHUB_API_URL="https://api.github.com/orgs/$${GITHUB_OWNER}/actions/runners/registration-token"
 fi
-GITHUB_TOKEN=$(curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 \
+if ! GITHUB_TOKEN=$(curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 \
   -X POST \
   -H "Accept: application/vnd.github+json" \
   -H "Authorization: Bearer $GITHUB_API_TOKEN" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -H "User-Agent: github-actions-runner-bootstrap" \
   -H "Content-Length: 0" \
-  "$GITHUB_API_URL" | jq -er '.token')
+  "$GITHUB_API_URL" | jq -er '.token'); then
+  echo "ERROR: GitHub token cannot create a runner registration token. Verify the token permissions and GitHub owner/repository configuration." >&2
+  exit 1
+fi
 set -x
 
 # ── Download & verify runner tarball ─────────────────────────────────────────
