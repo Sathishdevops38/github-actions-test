@@ -63,17 +63,12 @@ defaults:
 
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
-  # 1. Validate — runs on every push/PR across BOTH environments; never deploys
+  # 1. Validate — runs only for the selected environment; never deploys.
+  #    Push/PR events default to prod. workflow_dispatch uses chosen env.
   # ───────────────────────────────────────────────────────────────────────────
   validate:
-    name: "Validate & Lint (${{ matrix.environment }})"
+    name: "Validate & Lint (${{ github.event.inputs.environment || 'prod' }})"
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Validate both environments on every PR/push so a module change that
-        # breaks dev is caught before it reaches prod.
-        environment: [dev, prod]
 
     steps:
       - name: Checkout
@@ -97,11 +92,11 @@ jobs:
 
       - name: Terraform Init (no backend — validate only)
         run: terraform init -backend=false
-        working-directory: terraform/environments/${{ matrix.environment }}
+        working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Validate
         run: terraform validate -no-color
-        working-directory: terraform/environments/${{ matrix.environment }}
+        working-directory: ${{ env.TF_WORKING_DIR }}
 
   # ───────────────────────────────────────────────────────────────────────────
   # 2. Plan — runs on PRs and manual workflow_dispatch with action=plan|apply
@@ -112,7 +107,7 @@ jobs:
     needs: validate
     if: |
       github.event_name == 'pull_request' ||
-      github.event_name == 'push' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && (
         github.event.inputs.action == 'plan' ||
         github.event.inputs.action == 'apply'
