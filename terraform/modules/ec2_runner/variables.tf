@@ -11,7 +11,7 @@ variable "ami_id" {
 variable "instance_type" {
   description = "EC2 instance type for runners."
   type        = string
-  default     = "t3.medium"
+  default     = "t3.micro"
 }
 
 variable "root_volume_size_gb" {
