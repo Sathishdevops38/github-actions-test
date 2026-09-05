@@ -145,7 +145,7 @@ variable "max_runners" {
 variable "desired_runners" {
   description = "Initial desired ASG capacity."
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "log_retention_days" {
