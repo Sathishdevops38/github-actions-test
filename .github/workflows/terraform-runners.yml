@@ -7,12 +7,14 @@ on:
   push:
     branches:
       - main
+      - org-runner
     paths:
       - "terraform/**"
       - ".github/workflows/terraform-runners.yml"
   pull_request:
     branches:
       - main
+      - org-runner
     paths:
       - "terraform/**"
       - ".github/workflows/terraform-runners.yml"

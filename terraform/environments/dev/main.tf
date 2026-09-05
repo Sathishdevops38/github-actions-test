@@ -10,16 +10,24 @@ locals {
 # --------------------------------------------------------------------------
 # KMS key — pre-existing, managed outside Terraform.
 # Looked up by the alias that was created manually.
-# A separate alias is used for dev so dev and prod keys are isolated.
+# Alias name is derived from name_prefix (gh-runner-dev) so it is consistent
+# and never hardcoded. Create the alias in AWS before running terraform apply:
+#   aws kms create-alias \
+#     --alias-name alias/gh-runner-dev-runner \
+#     --target-key-id <your-key-id>
 # --------------------------------------------------------------------------
 data "aws_kms_alias" "runners" {
-  name = "alias/gh-runner-dev-runner"
+  name = "alias/${var.name_prefix}-runner"
 }
 
 # --------------------------------------------------------------------------
 # Secrets Manager — pre-existing, managed outside Terraform.
 # Looked up by name; the secret value is populated manually via AWS CLI/Console.
-# Uses a dev-specific secret so dev tokens never touch prod.
+# Secret name is derived from name_prefix (gh-runner-dev). Create it before
+# running terraform apply:
+#   aws secretsmanager create-secret \
+#     --name /gh-runner-dev/github-runner-token \
+#     --secret-string '{"token":"<YOUR_GITHUB_PAT>"}'
 # --------------------------------------------------------------------------
 data "aws_secretsmanager_secret" "github_token" {
   name = "/${var.name_prefix}/github-runner-token"
