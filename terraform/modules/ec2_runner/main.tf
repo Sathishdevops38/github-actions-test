@@ -17,7 +17,7 @@ locals {
 data "aws_region" "current" {}
 
 locals {
-  user_data = base64encode(templatefile("${path.module}/templates/runner-userdata.sh.tpl", {
+  user_data = base64encode(templatefile("${path.module}/templates/runner.sh", {
     github_owner            = var.github_owner
     github_repo             = var.github_repo
     github_token_secret_arn = var.github_token_secret_arn

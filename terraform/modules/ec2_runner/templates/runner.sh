@@ -1,23 +1,20 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # =============================================================================
 # GitHub Actions Self-Hosted Runner — Bootstrap Script
 # Runs on first boot via EC2 user-data (Amazon Linux 2023).
 # =============================================================================
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
-# Must happen BEFORE set -e so a mkdir/exec failure is still visible.
-# cloud-init captures file-descriptor output at the process level; a plain
-# redirect (not a tee subshell) is the only reliable way to get logs in
-# /var/log/runner-bootstrap.log AND surfaced in cloud-init's own journal.
 LOG_FILE="/var/log/runner-bootstrap.log"
 touch "$LOG_FILE" 2>/dev/null || LOG_FILE="/tmp/runner-bootstrap.log"
 exec > "$LOG_FILE" 2>&1
 
-# Now it is safe to enable strict mode — all output goes to the log.
+# Strict mode — exit on error, unbound variable, or pipe failure.
 set -euo pipefail
 set -x   # print every command; makes the log self-documenting
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Starting GitHub Actions runner bootstrap"
+
 
 # ── Variables (injected by Terraform templatefile()) ─────────────────────────
 RUNNER_VERSION="${runner_version}"
@@ -32,7 +29,7 @@ EPHEMERAL="${ephemeral}"
 RUNNER_HOME="/opt/actions-runner"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
-dnf update -y 
+dnf update -y
 dnf install -y \
   jq \
   git \
@@ -40,14 +37,12 @@ dnf install -y \
   perl-Digest-SHA \
   libicu \
   unzip \
-  libicu \
   openssl \
   amazon-cloudwatch-agent
 
 # ── Docker Engine ─────────────────────────────────────────────────────────────
 # AL2023 ships the core docker package natively; the buildx/compose plugins
 # live in Docker's official RHEL9 repo (AL2023 is RHEL9-compatible).
-# We pin releasever=9 so dnf resolves the correct RHEL repo metadata.
 cat > /etc/yum.repos.d/docker-ce.repo << 'DOCKERREPO'
 [docker-ce-stable]
 name=Docker CE Stable - $basearch
@@ -95,7 +90,7 @@ fi
 usermod -aG docker ec2-user
 
 # ── Fetch GitHub PAT from Secrets Manager ────────────────────────────────────
-set +x
+set +x   # suppress secret values from the log
 GITHUB_API_TOKEN=$(aws secretsmanager get-secret-value \
   --secret-id  "$GITHUB_TOKEN_SECRET_ARN" \
   --region     "$AWS_REGION" \
@@ -121,22 +116,27 @@ fi
 set -x
 
 # ── Download & verify runner tarball ─────────────────────────────────────────
+mkdir -p "$RUNNER_HOME"
 cd "$RUNNER_HOME"
-pwd
-RUNNER_ARCHIVE="actions-runner-linux-x64-2.337.0.tar.gz"
-curl -fsSL "https://github.com/actions/runner/releases/download/v2.337.0/$${RUNNER_ARCHIVE}" \
+
+RUNNER_ARCHIVE="actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz"
+curl -fsSL "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/$${RUNNER_ARCHIVE}" \
   -o "$RUNNER_ARCHIVE"
-echo "70920811a4f8ad4328818682bca5c6469c1c942fab52448868071d0063816613  $${RUNNER_ARCHIVE}" | shasum -a 256 -c
+
+# Fetch the official checksum file and verify — avoids hardcoding a hash.
+curl -fsSL "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}-sha256sum.txt" \
+  | grep "$RUNNER_ARCHIVE" | shasum -a 256 -c
+
 tar xzf "$RUNNER_ARCHIVE"
 chown -R ec2-user:ec2-user "$RUNNER_HOME"
 
-# Register and run the agent as the non-root ec2-user.
+# ── Register the runner ───────────────────────────────────────────────────────
 GITHUB_URL="https://github.com/$${GITHUB_OWNER}"
 if [[ -n "$GITHUB_REPO" ]]; then
   GITHUB_URL="$${GITHUB_URL}/$${GITHUB_REPO}"
 fi
 
-set +x
+set +x   # suppress token from log
 RUNNER_CONFIG_ARGS=(
   --unattended
   --url "$GITHUB_URL"
@@ -150,6 +150,8 @@ if [[ "$EPHEMERAL" == "true" ]]; then
 fi
 runuser -u ec2-user -- ./config.sh "$${RUNNER_CONFIG_ARGS[@]}"
 set -x
+
+# Start the runner as ec2-user in the background so user-data can complete.
 runuser -u ec2-user -- bash -c 'nohup ./run.sh > /tmp/actions-runner.log 2>&1 &'
 
 # ── CloudWatch Agent ─────────────────────────────────────────────────────────
