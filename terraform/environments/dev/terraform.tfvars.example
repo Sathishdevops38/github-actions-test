@@ -1,16 +1,17 @@
-# terraform.tfvars.example
+# terraform.tfvars.example — Dev environment
 # Copy to terraform.tfvars and fill in the values.
 # NEVER commit terraform.tfvars to version control.
 
 aws_region  = "us-east-1"
-environment = "prod"
+environment = "dev"
 owner       = "platform-team"
-name_prefix = "gh-runner"
+name_prefix = "gh-runner-dev"
 
-# Networking
-vpc_cidr             = "10.0.0.0/16"
-public_subnet_cidrs  = ["10.0.1.0/24", "10.0.2.0/24"]
-private_subnet_cidrs = ["10.0.11.0/24", "10.0.12.0/24"]
+# Networking — use a different CIDR range from prod (10.0.0.0/16) to avoid
+# any future VPC peering conflicts.
+vpc_cidr             = "10.1.0.0/16"
+public_subnet_cidrs  = ["10.1.1.0/24", "10.1.2.0/24"]
+private_subnet_cidrs = ["10.1.11.0/24", "10.1.12.0/24"]
 availability_zones   = ["us-east-1a", "us-east-1b"]
 
 # GitHub
@@ -23,22 +24,22 @@ github_owner        = "Sathishdevops38"
 github_repo         = ""
 runner_group        = "default"
 runner_version      = "2.337.0"
-extra_runner_labels = ["prod", "aws", "self-hosted"]
+extra_runner_labels = ["dev", "aws", "self-hosted"]
 ephemeral_runners   = true
 
-# EC2
+# EC2 — smaller instance and volume than prod to keep dev costs low
 # Get the latest AL2023 AMI from the AWS console or:
 #   aws ec2 describe-images --owners amazon \
 #     --filters "Name=name,Values=al2023-ami-2023*-x86_64" \
 #     --query 'sort_by(Images,&CreationDate)[-1].ImageId' --output text
 runner_ami_id              = "ami-XXXXXXXXXXXXXXX"
-runner_instance_type       = "t3.medium"
-runner_root_volume_size_gb = 30
+runner_instance_type       = "t3.small"
+runner_root_volume_size_gb = 20
 
-# ASG sizing
-min_runners     = 1
-max_runners     = 10
-desired_runners = 2
+# ASG sizing — keep dev footprint minimal; scale down to 0 when not in use
+min_runners     = 0
+max_runners     = 3
+desired_runners = 1
 
-# Observability
-log_retention_days = 90
+# Observability — shorter retention than prod to reduce cost
+log_retention_days = 30

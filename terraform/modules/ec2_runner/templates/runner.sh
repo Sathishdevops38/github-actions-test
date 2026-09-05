@@ -98,9 +98,11 @@ GITHUB_API_TOKEN=$(aws secretsmanager get-secret-value \
   --output     text)
 
 # GitHub requires a short-lived registration token, not a PAT, for config.sh.
-GITHUB_API_URL="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/actions/runners/registration-token"
+# Org-level when GITHUB_REPO is empty; repo-level otherwise.
 if [[ -z "$GITHUB_REPO" ]]; then
   GITHUB_API_URL="https://api.github.com/orgs/$${GITHUB_OWNER}/actions/runners/registration-token"
+else
+  GITHUB_API_URL="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/actions/runners/registration-token"
 fi
 if ! GITHUB_TOKEN=$(curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 \
   -X POST \
