@@ -68,6 +68,10 @@ module "iam" {
 module "ec2_runner" {
   source = "../../modules/ec2_runner"
 
+  # CloudWatch Logs must wait until the KMS key policy authorizes its service
+  # principal; both modules otherwise reference the same existing key directly.
+  depends_on = [module.iam]
+
   name_prefix             = var.name_prefix
   ami_id                  = var.runner_ami_id
   instance_type           = var.runner_instance_type
