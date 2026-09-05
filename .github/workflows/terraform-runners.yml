@@ -51,10 +51,9 @@ permissions:
 # ─────────────────────────────────────────────────────────────────────────────
 env:
   TF_VERSION: "1.10.5"
-  # On push/PR events there is no inputs.environment — default to prod so
-  # auto-apply on merge to main always targets prod, never dev.
-  TARGET_ENV: ${{ github.event.inputs.environment || 'prod' }}
-  TF_WORKING_DIR: "terraform/environments/${{ github.event.inputs.environment || 'prod' }}"
+  # On push/PR events there is no inputs.environment — default to dev.
+  TARGET_ENV: ${{ github.event.inputs.environment || 'dev' }}
+  TF_WORKING_DIR: "terraform/environments/${{ github.event.inputs.environment || 'dev' }}"
   AWS_REGION: ${{ vars.AWS_REGION }}
 
 defaults:
@@ -64,10 +63,10 @@ defaults:
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
   # 1. Validate — runs only for the selected environment; never deploys.
-  #    Push/PR events default to prod. workflow_dispatch uses chosen env.
+  #    Push/PR events default to dev. workflow_dispatch uses chosen env.
   # ───────────────────────────────────────────────────────────────────────────
   validate:
-    name: "Validate & Lint (${{ github.event.inputs.environment || 'prod' }})"
+    name: "Validate & Lint (${{ github.event.inputs.environment || 'dev' }})"
     runs-on: ubuntu-latest
 
     steps:
@@ -102,7 +101,7 @@ jobs:
   # 2. Plan — runs on PRs and manual workflow_dispatch with action=plan|apply
   # ───────────────────────────────────────────────────────────────────────────
   plan:
-    name: "Terraform Plan (${{ github.event.inputs.environment || 'prod' }})"
+    name: "Terraform Plan (${{ github.event.inputs.environment || 'dev' }})"
     runs-on: ubuntu-latest
     needs: validate
     if: |
@@ -215,14 +214,14 @@ jobs:
   #   GitHub → Settings → Environments → dev / prod
   # ───────────────────────────────────────────────────────────────────────────
   apply:
-    name: "Terraform Apply (${{ github.event.inputs.environment || 'prod' }})"
+    name: "Terraform Apply (${{ github.event.inputs.environment || 'dev' }})"
     runs-on: ubuntu-latest
     needs: plan
     if: |
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
     environment:
-      name: ${{ github.event.inputs.environment || 'prod' }}
+      name: ${{ github.event.inputs.environment || 'dev' }}
 
     steps:
       - name: Checkout
@@ -274,12 +273,12 @@ jobs:
   #    requires an additional manual approval before running.
   # ───────────────────────────────────────────────────────────────────────────
   destroy:
-    name: "Terraform Destroy (${{ github.event.inputs.environment || 'prod' }})"
+    name: "Terraform Destroy (${{ github.event.inputs.environment || 'dev' }})"
     runs-on: ubuntu-latest
     needs: validate
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
     environment:
-      name: ${{ github.event.inputs.environment || 'prod' }}-destroy  # separate env gate
+      name: ${{ github.event.inputs.environment || 'dev' }}-destroy  # separate env gate
 
     steps:
       - name: Checkout
