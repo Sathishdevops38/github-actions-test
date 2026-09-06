@@ -19,7 +19,7 @@ availability_zones   = ["us-east-1a", "us-east-1b"]
 # The GitHub PAT stored in Secrets Manager must have:
 #   - org-level:  manage_runners:org  (+ read:org if the org is private)
 #   - repo-level: repo scope
-github_owner        = "Sathishdevops38"
+github_owner        = "Sathishdevops38-githu-actions"
 github_repo         = ""
 runner_group        = "default"
 runner_version      = "2.337.0"

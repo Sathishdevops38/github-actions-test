@@ -101,7 +101,7 @@ GITHUB_API_TOKEN_RAW=$(aws secretsmanager get-secret-value \
 # It checks for common keys like 'token' or 'github_token'.
 # If jq is not successful or keys do not exist, fall back to the raw string.
 if echo "$GITHUB_API_TOKEN_RAW" | jq -e . >/dev/null 2>&1; then
-  GITHUB_API_TOKEN=$(echo "$GITHUB_API_TOKEN_RAW" | jq -r 'if has("token") then .token elif has("github_token") then .github_token else empty end')
+  GITHUB_API_TOKEN=$(echo "$GITHUB_API_TOKEN_RAW" | jq -r 'if has("token") then .token elif has("github_token") then .github_token else ([.. | strings | select(startswith("ghp_") or startswith("github_pat_"))] | first) // ([.. | strings] | first) end')
   if [[ -z "$GITHUB_API_TOKEN" ]]; then
     GITHUB_API_TOKEN="$GITHUB_API_TOKEN_RAW"
   fi
@@ -116,17 +116,38 @@ if [[ -z "$GITHUB_REPO" ]]; then
 else
   GITHUB_API_URL="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/actions/runners/registration-token"
 fi
-if ! GITHUB_TOKEN=$(curl -fsSL --retry 3 --connect-timeout 10 --max-time 30 \
+
+# Perform API call and store response/error code for detailed diagnostics
+HTTP_RESPONSE=$(curl -sS -w "\nHTTP_STATUS:%%{http_code}" \
   -X POST \
   -H "Accept: application/vnd.github+json" \
   -H "Authorization: Bearer $GITHUB_API_TOKEN" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -H "User-Agent: github-actions-runner-bootstrap" \
   -H "Content-Length: 0" \
-  "$GITHUB_API_URL" | jq -er '.token'); then
-  echo "ERROR: GitHub token cannot create a runner registration token. Verify the token permissions and GitHub owner/repository configuration." >&2
+  "$GITHUB_API_URL" || true)
+
+HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '/HTTP_STATUS:/d')
+HTTP_STATUS=$(echo "$HTTP_RESPONSE" | grep -oP '(?<=HTTP_STATUS:)[0-9]+')
+
+if [[ "$HTTP_STATUS" -ne 201 && "$HTTP_STATUS" -ne 200 ]]; then
+  echo "ERROR: GitHub token cannot create a runner registration token. (HTTP Status: $HTTP_STATUS)" >&2
+  echo "API Response: $HTTP_BODY" >&2
+  echo "" >&2
+  echo "── Troubleshooting Checklist ───────────────────────────────────────────" >&2
+  echo "1. Are GITHUB_OWNER ('$${GITHUB_OWNER}') and GITHUB_REPO ('$${GITHUB_REPO}') correct?" >&2
+  echo "   - Note: If '$${GITHUB_OWNER}' is a personal GitHub user account and NOT an organization," >&2
+  echo "     GITHUB_REPO must NOT be empty! Personal accounts do not support org-level runners." >&2
+  echo "2. Does the GitHub Personal Access Token have the required permissions?" >&2
+  echo "   - Repository-level registration: 'repo' scope is required." >&2
+  echo "   - Organization-level registration: 'admin:org' (or 'manage_runners:org') is required." >&2
+  echo "3. Is the secret in AWS Secrets Manager formatted correctly?" >&2
+  echo "   - Plaintext PAT (e.g. ghp_...) or JSON (e.g. {\"token\":\"ghp_...\"}) are both supported." >&2
+  echo "────────────────────────────────────────────────────────────────────────" >&2
   exit 1
 fi
+
+GITHUB_TOKEN=$(echo "$HTTP_BODY" | jq -er '.token')
 set -x
 
 # ── Download & verify runner tarball ─────────────────────────────────────────
