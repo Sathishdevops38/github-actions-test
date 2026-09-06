@@ -5,9 +5,9 @@ variable "aws_region" {
 }
 
 variable "environment" {
-  description = "Deployment environment label (e.g. prod, staging)."
+  description = "Deployment environment label (e.g. dev, prod)."
   type        = string
-  default     = "prod"
+  default     = "dev"
 }
 
 variable "owner" {
@@ -19,7 +19,7 @@ variable "owner" {
 variable "name_prefix" {
   description = "Short prefix prepended to every resource name."
   type        = string
-  default     = "gh-runner"
+  default     = "gh-runner-dev"
 }
 
 # ── Networking ───────────────────────────────────────────────────────────────
@@ -27,19 +27,19 @@ variable "name_prefix" {
 variable "vpc_cidr" {
   description = "CIDR block for the VPC."
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "10.1.0.0/16"
 }
 
 variable "public_subnet_cidrs" {
   description = "CIDRs for public subnets (NAT Gateways)."
   type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
+  default     = ["10.1.1.0/24", "10.1.2.0/24"]
 }
 
 variable "private_subnet_cidrs" {
   description = "CIDRs for private subnets (runner instances)."
   type        = list(string)
-  default     = ["10.0.11.0/24", "10.0.12.0/24"]
+  default     = ["10.1.11.0/24", "10.1.12.0/24"]
 }
 
 variable "availability_zones" {
@@ -119,27 +119,27 @@ variable "runner_ami_id" {
 }
 
 variable "runner_instance_type" {
-  description = "EC2 instance type for runners."
+  description = "EC2 instance type for runners. Dev uses a smaller instance than prod."
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
 }
 
 variable "runner_root_volume_size_gb" {
   description = "Root EBS volume size in GiB."
   type        = number
-  default     = 30
+  default     = 20
 }
 
 variable "min_runners" {
   description = "Minimum ASG capacity."
   type        = number
-  default     = 1
+  default     = 0
 }
 
 variable "max_runners" {
   description = "Maximum ASG capacity."
   type        = number
-  default     = 10
+  default     = 3
 }
 
 variable "desired_runners" {
@@ -151,5 +151,5 @@ variable "desired_runners" {
 variable "log_retention_days" {
   description = "CloudWatch log retention in days."
   type        = number
-  default     = 90
+  default     = 30
 }
