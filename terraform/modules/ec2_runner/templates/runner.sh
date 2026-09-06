@@ -141,6 +141,9 @@ if [[ "$HTTP_STATUS" -ne 201 && "$HTTP_STATUS" -ne 200 ]]; then
   echo "2. Does the GitHub Personal Access Token have the required permissions?" >&2
   echo "   - Repository-level registration: 'repo' scope is required." >&2
   echo "   - Organization-level registration: 'admin:org' (or 'manage_runners:org') is required." >&2
+  echo "   - CRITICAL: Fine-Grained PATs (starting with 'github_pat_') DO NOT support organization-level" >&2
+  echo "     administration APIs. For organization-level runners, you MUST use a Classic PAT" >&2
+  echo "     (starting with 'ghp_') with the 'admin:org' (or 'manage_runners:org') scope." >&2
   echo "3. Is the secret in AWS Secrets Manager formatted correctly?" >&2
   echo "   - Plaintext PAT (e.g. ghp_...) or JSON (e.g. {\"token\":\"ghp_...\"}) are both supported." >&2
   echo "────────────────────────────────────────────────────────────────────────" >&2
