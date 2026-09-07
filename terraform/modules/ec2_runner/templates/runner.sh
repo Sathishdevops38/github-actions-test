@@ -136,51 +136,61 @@ chown -R ec2-user:ec2-user "$RUNNER_HOME"
 # re-registers → picks up next job. The runner is always visible in GitHub
 # Settings → Runners between jobs (registered, idle state).
 
-cat > /opt/actions-runner/run_registered.sh << WRAPPER
+# Values known at Terraform render time are baked in directly.
+# All other shell variables use \$ so they are not touched by templatefile().
+cat > /opt/actions-runner/run_registered.sh << 'WRAPPER'
 #!/bin/bash
 set -euo pipefail
 
 RUNNER_HOME="/opt/actions-runner"
-cd "\$RUNNER_HOME"
+cd "$RUNNER_HOME"
+
+GITHUB_TOKEN_SECRET_ARN="${github_token_secret_arn}"
+AWS_REGION="${aws_region}"
+GITHUB_OWNER="${github_owner}"
+GITHUB_REPO="${github_repo}"
+RUNNER_NAME="${runner_name_prefix}-$(hostname -s)"
+RUNNER_LABELS="${runner_labels}"
+RUNNER_GROUP="${runner_group}"
 
 # Fetch a fresh registration token from Secrets Manager
-GITHUB_API_TOKEN_RAW=\$(aws secretsmanager get-secret-value \
+GITHUB_API_TOKEN_RAW=$(aws secretsmanager get-secret-value \
   --secret-id  "$GITHUB_TOKEN_SECRET_ARN" \
   --region     "$AWS_REGION" \
   --query      'SecretString' \
   --output     text)
 
-if echo "\$GITHUB_API_TOKEN_RAW" | jq -e . >/dev/null 2>&1; then
-  GITHUB_API_TOKEN=\$(echo "\$GITHUB_API_TOKEN_RAW" | jq -r 'if has("token") then .token elif has("github_token") then .github_token else ([.. | strings | select(startswith("ghp_") or startswith("github_pat_"))] | first) // ([.. | strings] | first) end')
-  [ -z "\$GITHUB_API_TOKEN" ] && GITHUB_API_TOKEN="\$GITHUB_API_TOKEN_RAW"
+if echo "$GITHUB_API_TOKEN_RAW" | jq -e . >/dev/null 2>&1; then
+  GITHUB_API_TOKEN=$(echo "$GITHUB_API_TOKEN_RAW" | jq -r 'if has("token") then .token elif has("github_token") then .github_token else ([.. | strings | select(startswith("ghp_") or startswith("github_pat_"))] | first) // ([.. | strings] | first) end')
+  [ -z "$GITHUB_API_TOKEN" ] && GITHUB_API_TOKEN="$GITHUB_API_TOKEN_RAW"
 else
-  GITHUB_API_TOKEN="\$GITHUB_API_TOKEN_RAW"
+  GITHUB_API_TOKEN="$GITHUB_API_TOKEN_RAW"
 fi
 
 GITHUB_URL="https://github.com/$GITHUB_OWNER"
-[ -n "$GITHUB_REPO" ] && GITHUB_URL="\$GITHUB_URL/$GITHUB_REPO"
+[ -n "$GITHUB_REPO" ] && GITHUB_URL="$GITHUB_URL/$GITHUB_REPO"
 
 if [[ -z "$GITHUB_REPO" ]]; then
-  REG_API="https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners/registration-token"
+  REG_API="https://api.github.com/orgs/$GITHUB_OWNER/actions/runners/registration-token"
 else
-  REG_API="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners/registration-token"
+  REG_API="https://api.github.com/repos/$GITHUB_OWNER/$GITHUB_REPO/actions/runners/registration-token"
 fi
 
-REG_TOKEN=\$(curl -fsSL -X POST \
+REG_TOKEN=$(curl -fsSL -X POST \
   -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer \$GITHUB_API_TOKEN" \
+  -H "Authorization: Bearer $GITHUB_API_TOKEN" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   -H "Content-Length: 0" \
-  "\$REG_API" | jq -er '.token')
+  "$REG_API" | jq -er '.token')
 
 # Remove stale config so config.sh --replace can succeed cleanly
-rm -f "\$RUNNER_HOME"/.runner "\$RUNNER_HOME"/.credentials "\$RUNNER_HOME"/.credentials_rsaparams
+rm -f "$RUNNER_HOME"/.runner "$RUNNER_HOME"/.credentials "$RUNNER_HOME"/.credentials_rsaparams
 
 ./config.sh \
   --unattended \
   --replace \
-  --url     "\$GITHUB_URL" \
-  --token   "\$REG_TOKEN" \
+  --url     "$GITHUB_URL" \
+  --token   "$REG_TOKEN" \
   --name    "$RUNNER_NAME" \
   --labels  "$RUNNER_LABELS" \
   --runnergroup "$RUNNER_GROUP"
