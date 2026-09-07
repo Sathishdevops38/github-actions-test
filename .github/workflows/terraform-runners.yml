@@ -188,8 +188,7 @@ jobs:
             const output = fs.readFileSync('${{ env.TF_WORKING_DIR }}/plan_output.txt', 'utf8');
             const truncated = output.length > 60000 ? output.slice(0, 60000) + '\n...(truncated)' : output;
             const body = `## Terraform Plan — \`${{ env.TARGET_ENV }}\`
-            <details>
-<summary>Show Plan</summary>
+            <details><summary>Show Plan</summary>
 
             \`\`\`hcl
             ${truncated}
