@@ -136,7 +136,7 @@ chown -R ec2-user:ec2-user "$RUNNER_HOME"
 # re-registers → picks up next job. The runner is always visible in GitHub
 # Settings → Runners between jobs (registered, idle state).
 
-# Terraform placeholders (${var}) are substituted at plan/apply time.
+# Terraform placeholders ($${var}) are substituted at plan/apply time.
 # Every bash $ that must survive to runtime is escaped as \$.
 cat > /opt/actions-runner/run_registered.sh << WRAPPER
 #!/bin/bash
