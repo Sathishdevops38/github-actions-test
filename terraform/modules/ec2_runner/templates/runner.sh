@@ -28,6 +28,14 @@ AWS_REGION="${aws_region}"
 EPHEMERAL="${ephemeral}"
 RUNNER_HOME="/opt/actions-runner"
 
+# ── SSM Agent — enable before anything else ───────────────────────────────────
+# amazon-ssm-agent is pre-installed on AL2023 but not always running after
+# user-data starts. Enable and start it immediately so Session Manager
+# connections are available as soon as the instance reaches the network.
+# The agent reaches SSM endpoints via the NAT Gateway (no VPC endpoints needed).
+systemctl enable amazon-ssm-agent
+systemctl start  amazon-ssm-agent
+
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 dnf update -y
 dnf install -y \
