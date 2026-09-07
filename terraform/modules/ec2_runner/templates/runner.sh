@@ -97,71 +97,9 @@ fi
 # Amazon Linux 2023 provides the non-root ec2-user account.
 usermod -aG docker ec2-user
 
-# ── Fetch GitHub PAT from Secrets Manager ────────────────────────────────────
-set +x   # suppress secret values from the log
-GITHUB_API_TOKEN_RAW=$(aws secretsmanager get-secret-value \
-  --secret-id  "$GITHUB_TOKEN_SECRET_ARN" \
-  --region     "$AWS_REGION" \
-  --query      'SecretString' \
-  --output     text)
-
-# If the retrieved secret is a JSON string, try to parse it with jq.
-# It checks for common keys like 'token' or 'github_token'.
-# If jq is not successful or keys do not exist, fall back to the raw string.
-if echo "$GITHUB_API_TOKEN_RAW" | jq -e . >/dev/null 2>&1; then
-  GITHUB_API_TOKEN=$(echo "$GITHUB_API_TOKEN_RAW" | jq -r 'if has("token") then .token elif has("github_token") then .github_token else ([.. | strings | select(startswith("ghp_") or startswith("github_pat_"))] | first) // ([.. | strings] | first) end')
-  if [[ -z "$GITHUB_API_TOKEN" ]]; then
-    GITHUB_API_TOKEN="$GITHUB_API_TOKEN_RAW"
-  fi
-else
-  GITHUB_API_TOKEN="$GITHUB_API_TOKEN_RAW"
-fi
-
-# GitHub requires a short-lived registration token, not a PAT, for config.sh.
-# Org-level when GITHUB_REPO is empty; repo-level otherwise.
-if [[ -z "$GITHUB_REPO" ]]; then
-  GITHUB_API_URL="https://api.github.com/orgs/$${GITHUB_OWNER}/actions/runners/registration-token"
-else
-  GITHUB_API_URL="https://api.github.com/repos/$${GITHUB_OWNER}/$${GITHUB_REPO}/actions/runners/registration-token"
-fi
-
-# Perform API call and store response/error code for detailed diagnostics
-HTTP_RESPONSE=$(curl -sS -w "\nHTTP_STATUS:%%{http_code}" \
-  -X POST \
-  -H "Accept: application/vnd.github+json" \
-  -H "Authorization: Bearer $GITHUB_API_TOKEN" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  -H "User-Agent: github-actions-runner-bootstrap" \
-  -H "Content-Length: 0" \
-  "$GITHUB_API_URL" || true)
-
-HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '/HTTP_STATUS:/d')
-HTTP_STATUS=$(echo "$HTTP_RESPONSE" | grep -oP '(?<=HTTP_STATUS:)[0-9]+')
-
-if [[ "$HTTP_STATUS" -ne 201 && "$HTTP_STATUS" -ne 200 ]]; then
-  echo "ERROR: GitHub token cannot create a runner registration token. (HTTP Status: $HTTP_STATUS)" >&2
-  echo "API Response: $HTTP_BODY" >&2
-  echo "" >&2
-  echo "── Troubleshooting Checklist ───────────────────────────────────────────" >&2
-  echo "1. Are GITHUB_OWNER ('$${GITHUB_OWNER}') and GITHUB_REPO ('$${GITHUB_REPO}') correct?" >&2
-  echo "   - Note: If '$${GITHUB_OWNER}' is a personal GitHub user account and NOT an organization," >&2
-  echo "     GITHUB_REPO must NOT be empty! Personal accounts do not support org-level runners." >&2
-  echo "2. Does the GitHub Personal Access Token have the required permissions?" >&2
-  echo "   - Repository-level registration: 'repo' scope is required." >&2
-  echo "   - Organization-level registration: 'admin:org' (or 'manage_runners:org') is required." >&2
-  echo "   - CRITICAL: Fine-Grained PATs (starting with 'github_pat_') DO NOT support organization-level" >&2
-  echo "     administration APIs. For organization-level runners, you MUST use a Classic PAT" >&2
-  echo "     (starting with 'ghp_') with the 'admin:org' (or 'manage_runners:org') scope." >&2
-  echo "3. Is the secret in AWS Secrets Manager formatted correctly?" >&2
-  echo "   - Plaintext PAT (e.g. ghp_...) or JSON (e.g. {\"token\":\"ghp_...\"}) are both supported." >&2
-  echo "────────────────────────────────────────────────────────────────────────" >&2
-  exit 1
-fi
-
-GITHUB_TOKEN=$(echo "$HTTP_BODY" | jq -er '.token')
-set -x
-
 # ── Download & verify runner tarball ─────────────────────────────────────────
+# Registration is handled by the run_registered.sh wrapper on every cycle.
+# The bootstrap only needs to download and extract the runner binary.
 mkdir -p "$RUNNER_HOME"
 cd "$RUNNER_HOME"
 
@@ -185,41 +123,78 @@ echo "$${RUNNER_SHA}  $${RUNNER_ARCHIVE}" | shasum -a 256 -c
 tar xzf "$${RUNNER_ARCHIVE}"
 chown -R ec2-user:ec2-user "$RUNNER_HOME"
 
-# ── Register the runner ───────────────────────────────────────────────────────
-GITHUB_URL="https://github.com/$${GITHUB_OWNER}"
-if [[ -n "$GITHUB_REPO" ]]; then
-  GITHUB_URL="$${GITHUB_URL}/$${GITHUB_REPO}"
+# ── Re-registration wrapper ───────────────────────────────────────────────────
+# Because the runner must re-register with a fresh GitHub token before every
+# run.sh invocation, we write a small wrapper script that:
+#   1. Removes any stale .runner config left from the previous job
+#   2. Fetches a new registration token from Secrets Manager
+#   3. Calls config.sh --replace to register the runner
+#   4. Exec's run.sh — which picks up one job then exits cleanly
+#
+# The systemd unit calls this wrapper with Restart=always so the cycle repeats
+# automatically: job done → run.sh exits → systemd restarts wrapper → runner
+# re-registers → picks up next job. The runner is always visible in GitHub
+# Settings → Runners between jobs (registered, idle state).
+
+cat > /opt/actions-runner/run_registered.sh << WRAPPER
+#!/bin/bash
+set -euo pipefail
+
+RUNNER_HOME="/opt/actions-runner"
+cd "\$RUNNER_HOME"
+
+# Fetch a fresh registration token from Secrets Manager
+GITHUB_API_TOKEN_RAW=\$(aws secretsmanager get-secret-value \
+  --secret-id  "$GITHUB_TOKEN_SECRET_ARN" \
+  --region     "$AWS_REGION" \
+  --query      'SecretString' \
+  --output     text)
+
+if echo "\$GITHUB_API_TOKEN_RAW" | jq -e . >/dev/null 2>&1; then
+  GITHUB_API_TOKEN=\$(echo "\$GITHUB_API_TOKEN_RAW" | jq -r 'if has("token") then .token elif has("github_token") then .github_token else ([.. | strings | select(startswith("ghp_") or startswith("github_pat_"))] | first) // ([.. | strings] | first) end')
+  [ -z "\$GITHUB_API_TOKEN" ] && GITHUB_API_TOKEN="\$GITHUB_API_TOKEN_RAW"
+else
+  GITHUB_API_TOKEN="\$GITHUB_API_TOKEN_RAW"
 fi
 
-set +x   # suppress token from log
-RUNNER_CONFIG_ARGS=(
-  --unattended
-  --url "$GITHUB_URL"
-  --token "$GITHUB_TOKEN"
-  --name "$RUNNER_NAME"
-  --labels "$RUNNER_LABELS"
-  --runnergroup "$RUNNER_GROUP"
-)
-if [[ "$EPHEMERAL" == "true" ]]; then
-  RUNNER_CONFIG_ARGS+=(--ephemeral)
+GITHUB_URL="https://github.com/$GITHUB_OWNER"
+[ -n "$GITHUB_REPO" ] && GITHUB_URL="\$GITHUB_URL/$GITHUB_REPO"
+
+if [[ -z "$GITHUB_REPO" ]]; then
+  REG_API="https://api.github.com/orgs/${GITHUB_OWNER}/actions/runners/registration-token"
+else
+  REG_API="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners/registration-token"
 fi
-runuser -u ec2-user -- ./config.sh "$${RUNNER_CONFIG_ARGS[@]}"
-set -x
+
+REG_TOKEN=\$(curl -fsSL -X POST \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer \$GITHUB_API_TOKEN" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  -H "Content-Length: 0" \
+  "\$REG_API" | jq -er '.token')
+
+# Remove stale config so config.sh --replace can succeed cleanly
+rm -f "\$RUNNER_HOME"/.runner "\$RUNNER_HOME"/.credentials "\$RUNNER_HOME"/.credentials_rsaparams
+
+./config.sh \
+  --unattended \
+  --replace \
+  --url     "\$GITHUB_URL" \
+  --token   "\$REG_TOKEN" \
+  --name    "$RUNNER_NAME" \
+  --labels  "$RUNNER_LABELS" \
+  --runnergroup "$RUNNER_GROUP"
+
+exec ./run.sh
+WRAPPER
+
+chmod 0755 /opt/actions-runner/run_registered.sh
+chown ec2-user:ec2-user /opt/actions-runner/run_registered.sh
 
 # ── systemd service unit ──────────────────────────────────────────────────────
-# Replaces the previous "nohup ./run.sh &" approach.
-# Key behaviours:
-#   • Restart=on-failure  — restarts the runner if it crashes (non-zero exit).
-#     A clean exit (exit 0) does NOT restart the service, which is correct for
-#     ephemeral runners: after one job the process exits cleanly and
-#     ExecStopPost fires to self-terminate the instance.
-#   • After=docker.service — runner waits for Docker before starting, so
-#     Docker-in-Docker jobs never fail with "docker not found".
-#   • StandardOutput=journal — all runner stdout/stderr flows through journald,
-#     which the CloudWatch agent tails (no more silent /tmp log files).
-#   • ExecStopPost — when the service stops cleanly (ephemeral job done) the
-#     instance terminates itself so the ASG replaces it with a fresh runner.
-#     IMDSv2 is used for all metadata calls (http_tokens=required is enforced).
+# Restart=always — after each job run.sh exits cleanly (exit 0); systemd
+# restarts the wrapper which re-registers the runner and picks up the next job.
+# The runner remains visible in GitHub Settings → Runners between jobs.
 
 cat > /etc/systemd/system/github-runner.service << 'UNIT'
 [Unit]
@@ -231,10 +206,10 @@ Wants=network-online.target docker.service
 Type=simple
 User=ec2-user
 WorkingDirectory=/opt/actions-runner
-ExecStart=/opt/actions-runner/run.sh
+ExecStart=/opt/actions-runner/run_registered.sh
 
-# Restart on crash; do NOT restart on clean exit (important for ephemeral mode)
-Restart=on-failure
+# Restart after every exit (clean job completion OR crash)
+Restart=always
 RestartSec=5s
 
 # Graceful shutdown — give the runner 30 s to finish / deregister
@@ -250,24 +225,6 @@ LimitNPROC=4096
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=github-runner
-
-# Self-terminate after a clean (ephemeral job complete) stop so the ASG
-# replaces this instance with a fresh runner.
-ExecStopPost=/bin/bash -c \
-  'if [ "$$SERVICE_RESULT" = "success" ]; then \
-     TOKEN=$(curl -sf -X PUT \
-       -H "X-aws-ec2-metadata-token-ttl-seconds: 30" \
-       http://169.254.169.254/latest/api/token); \
-     REGION=$(curl -sf \
-       -H "X-aws-ec2-metadata-token: $$TOKEN" \
-       http://169.254.169.254/latest/meta-data/placement/region); \
-     INSTANCE_ID=$(curl -sf \
-       -H "X-aws-ec2-metadata-token: $$TOKEN" \
-       http://169.254.169.254/latest/meta-data/instance-id); \
-     aws ec2 terminate-instances \
-       --region "$$REGION" \
-       --instance-ids "$$INSTANCE_ID"; \
-   fi'
 
 [Install]
 WantedBy=multi-user.target
@@ -305,16 +262,12 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWCO
             "log_group_name": "/github-actions/runners/${runner_name_prefix}",
             "log_stream_name": "{instance_id}/bootstrap",
             "retention_in_days": 90
-          }
-        ]
-      },
-      "journald": {
-        "collect_list": [
+          },
           {
+            "file_path": "/opt/actions-runner/_diag/Runner_*.log",
             "log_group_name": "/github-actions/runners/${runner_name_prefix}",
             "log_stream_name": "{instance_id}/runner",
-            "retention_in_days": 90,
-            "units": ["github-runner.service"]
+            "retention_in_days": 90
           }
         ]
       }
