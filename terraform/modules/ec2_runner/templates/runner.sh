@@ -161,18 +161,10 @@ RUNNER_ARCHIVE="actions-runner-linux-x64-$${RUNNER_VERSION}.tar.gz"
 curl -fsSL "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/$${RUNNER_ARCHIVE}" \
   -o "$${RUNNER_ARCHIVE}"
 
-# The SHA-256 checksum is embedded in the GitHub release body, not a separate
-# asset file.  Extract it via the API and verify before extracting.
-RUNNER_SHA=$(curl -fsSL --retry 3 \
-  -H "Accept: application/vnd.github+json" \
-  -H "X-GitHub-Api-Version: 2022-11-28" \
-  "https://api.github.com/repos/actions/runner/releases/tags/v$${RUNNER_VERSION}" \
-  | grep -oP '(?<=<!-- BEGIN SHA linux-x64 -->)[a-f0-9]{64}(?=<!-- END SHA linux-x64 -->)')
-if [[ -z "$RUNNER_SHA" ]]; then
-  echo "ERROR: could not extract SHA-256 for runner v$${RUNNER_VERSION} from GitHub release body" >&2
-  exit 1
-fi
-echo "$${RUNNER_SHA}  $${RUNNER_ARCHIVE}" | shasum -a 256 -c
+# Fetch the official checksum file published alongside the release and verify.
+curl -fsSL --retry 3 \
+  "https://github.com/actions/runner/releases/download/v$${RUNNER_VERSION}/actions-runner-linux-x64-$${RUNNER_VERSION}-sha256sum.txt" \
+  | grep "$${RUNNER_ARCHIVE}" | shasum -a 256 -c
 
 tar xzf "$${RUNNER_ARCHIVE}"
 chown -R ec2-user:ec2-user "$RUNNER_HOME"
