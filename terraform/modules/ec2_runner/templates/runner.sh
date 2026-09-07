@@ -198,10 +198,94 @@ fi
 runuser -u ec2-user -- ./config.sh "$${RUNNER_CONFIG_ARGS[@]}"
 set -x
 
-# Start the runner as ec2-user in the background so user-data can complete.
-runuser -u ec2-user -- bash -c 'nohup ./run.sh > /tmp/actions-runner.log 2>&1 &'
+# ── systemd service unit ──────────────────────────────────────────────────────
+# Replaces the previous "nohup ./run.sh &" approach.
+# Key behaviours:
+#   • Restart=on-failure  — restarts the runner if it crashes (non-zero exit).
+#     A clean exit (exit 0) does NOT restart the service, which is correct for
+#     ephemeral runners: after one job the process exits cleanly and
+#     ExecStopPost fires to self-terminate the instance.
+#   • After=docker.service — runner waits for Docker before starting, so
+#     Docker-in-Docker jobs never fail with "docker not found".
+#   • StandardOutput=journal — all runner stdout/stderr flows through journald,
+#     which the CloudWatch agent tails (no more silent /tmp log files).
+#   • ExecStopPost — when the service stops cleanly (ephemeral job done) the
+#     instance terminates itself so the ASG replaces it with a fresh runner.
+#     IMDSv2 is used for all metadata calls (http_tokens=required is enforced).
+
+cat > /etc/systemd/system/github-runner.service << 'UNIT'
+[Unit]
+Description=GitHub Actions Self-Hosted Runner
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/actions-runner
+ExecStart=/opt/actions-runner/run.sh
+
+# Restart on crash; do NOT restart on clean exit (important for ephemeral mode)
+Restart=on-failure
+RestartSec=5s
+
+# Graceful shutdown — give the runner 30 s to finish / deregister
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Resource guards
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Route all output through journald so CloudWatch agent can collect it
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=github-runner
+
+# Self-terminate after a clean (ephemeral job complete) stop so the ASG
+# replaces this instance with a fresh runner.
+ExecStopPost=/bin/bash -c \
+  'if [ "$$SERVICE_RESULT" = "success" ]; then \
+     TOKEN=$(curl -sf -X PUT \
+       -H "X-aws-ec2-metadata-token-ttl-seconds: 30" \
+       http://169.254.169.254/latest/api/token); \
+     REGION=$(curl -sf \
+       -H "X-aws-ec2-metadata-token: $$TOKEN" \
+       http://169.254.169.254/latest/meta-data/placement/region); \
+     INSTANCE_ID=$(curl -sf \
+       -H "X-aws-ec2-metadata-token: $$TOKEN" \
+       http://169.254.169.254/latest/meta-data/instance-id); \
+     aws ec2 terminate-instances \
+       --region "$$REGION" \
+       --instance-ids "$$INSTANCE_ID"; \
+   fi'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now github-runner.service
+
+# ── Health-check: wait for the runner service to become active ────────────────
+# Gives up to 60 s before declaring the bootstrap done. A failure here is
+# non-fatal (the service itself will keep retrying), but it surfaces early
+# in the bootstrap log so operators can diagnose registration issues quickly.
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Waiting for github-runner.service to become active..."
+for i in $(seq 1 12); do
+  if systemctl is-active --quiet github-runner.service; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] github-runner.service is active (attempt $i/12)"
+    break
+  fi
+  echo "  ... not active yet ($i/12), retrying in 5 s"
+  sleep 5
+done
 
 # ── CloudWatch Agent ─────────────────────────────────────────────────────────
+# The runner service logs are collected via journald (not a flat file) so that
+# stdout/stderr from every job is captured reliably without needing a separate
+# log-rotation scheme.
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWCONF'
 {
   "logs": {
@@ -213,12 +297,16 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWCO
             "log_group_name": "/github-actions/runners/${runner_name_prefix}",
             "log_stream_name": "{instance_id}/bootstrap",
             "retention_in_days": 90
-          },
+          }
+        ]
+      },
+      "journald": {
+        "collect_list": [
           {
-            "file_path": "/opt/actions-runner/_diag/Runner_*.log",
             "log_group_name": "/github-actions/runners/${runner_name_prefix}",
             "log_stream_name": "{instance_id}/runner",
-            "retention_in_days": 90
+            "retention_in_days": 90,
+            "units": ["github-runner.service"]
           }
         ]
       }
