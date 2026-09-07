@@ -29,7 +29,7 @@ EPHEMERAL="${ephemeral}"
 RUNNER_HOME="/opt/actions-runner"
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
-dnf update -y
+dnf update -y --security
 dnf install -y \
   jq \
   git \
@@ -38,7 +38,12 @@ dnf install -y \
   libicu \
   unzip \
   openssl \
+  amazon-ssm-agent \
   amazon-cloudwatch-agent
+
+# Ensure the SSM agent is enabled and running before anything else that
+# could disrupt it (e.g. Docker install with --allowerasing).
+systemctl enable --now amazon-ssm-agent
 
 # ── Docker Engine ─────────────────────────────────────────────────────────────
 # AL2023 ships the core docker package natively; the buildx/compose plugins
@@ -52,13 +57,19 @@ gpgcheck=1
 gpgkey=https://download.docker.com/linux/rhel/gpg
 DOCKERREPO
 
+# --allowerasing lets DNF resolve conflicts by removing packages. Explicitly
+# exclude amazon-ssm-agent so it is never erased by this step.
 dnf install -y --allowerasing \
+  --exclude=amazon-ssm-agent \
   docker-ce \
   docker-ce-cli \
   containerd.io \
   docker-buildx-plugin \
   docker-compose-plugin
 systemctl enable --now docker
+
+# Re-confirm SSM agent is still running after the Docker install.
+systemctl is-active amazon-ssm-agent || systemctl restart amazon-ssm-agent
 
 # ── kubectl ───────────────────────────────────────────────────────────────────
 KUBECTL_VERSION="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"
