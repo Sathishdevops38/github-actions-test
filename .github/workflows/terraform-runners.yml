@@ -7,12 +7,14 @@ on:
   push:
     branches:
       - main
+      - org-runner
     paths:
       - "terraform/**"
       - ".github/workflows/terraform-runners.yml"
   pull_request:
     branches:
       - main
+      - org-runner
     paths:
       - "terraform/**"
       - ".github/workflows/terraform-runners.yml"
@@ -32,15 +34,16 @@ on:
         required: true
         type: choice
         options:
+          - dev
           - prod
-        default: prod
+        default: dev   # default to dev so accidental runs never touch prod
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Permissions — OIDC token for AWS authentication + read access for PR checks
 # ─────────────────────────────────────────────────────────────────────────────
 permissions:
-  id-token: write   # Required for OIDC JWT
-  contents: read    # Required to check out code
+  id-token: write       # Required for OIDC JWT
+  contents: read        # Required to check out code
   pull-requests: write  # Required to post plan as PR comment
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -48,7 +51,9 @@ permissions:
 # ─────────────────────────────────────────────────────────────────────────────
 env:
   TF_VERSION: "1.10.5"
-  TF_WORKING_DIR: "terraform/environments/${{ github.event.inputs.environment || 'prod' }}"
+  # On push/PR events there is no inputs.environment — default to dev.
+  TARGET_ENV: ${{ github.event.inputs.environment || 'dev' }}
+  TF_WORKING_DIR: "terraform/environments/${{ github.event.inputs.environment || 'dev' }}"
   AWS_REGION: ${{ vars.AWS_REGION }}
 
 defaults:
@@ -57,10 +62,11 @@ defaults:
 
 jobs:
   # ───────────────────────────────────────────────────────────────────────────
-  # 1. Validate — run on every push/PR; never deploys
+  # 1. Validate — runs only for the selected environment; never deploys.
+  #    Push/PR events default to dev. workflow_dispatch uses chosen env.
   # ───────────────────────────────────────────────────────────────────────────
   validate:
-    name: "Validate & Lint"
+    name: "Validate & Lint (${{ github.event.inputs.environment || 'dev' }})"
     runs-on: ubuntu-latest
 
     steps:
@@ -73,7 +79,7 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.4
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -83,9 +89,8 @@ jobs:
         run: terraform fmt -check -recursive
         working-directory: terraform
 
-      - name: Terraform Init (validate only — no backend)
-        run: |
-          terraform init -backend=false
+      - name: Terraform Init (no backend — validate only)
+        run: terraform init -backend=false
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Validate
@@ -93,10 +98,10 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
 
   # ───────────────────────────────────────────────────────────────────────────
-  # 2. Plan — runs on PRs and manual workflow_dispatch with action=plan
+  # 2. Plan — runs on PRs and manual workflow_dispatch with action=plan|apply
   # ───────────────────────────────────────────────────────────────────────────
   plan:
-    name: "Terraform Plan"
+    name: "Terraform Plan (${{ github.event.inputs.environment || 'dev' }})"
     runs-on: ubuntu-latest
     needs: validate
     if: |
@@ -117,7 +122,7 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.4
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -126,7 +131,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=github-actions-runners/${{ github.event.inputs.environment || 'prod' }}/terraform.tfstate" \
+            -backend-config="key=github-actions-runners/${{ env.TARGET_ENV }}/terraform.tfstate" \
             -backend-config="region=${{ env.AWS_REGION }}" \
             -backend-config="use_lockfile=true" \
             -backend-config="encrypt=true" \
@@ -135,7 +140,7 @@ jobs:
 
       - name: Force-unlock stale state lock (if any)
         run: |
-          LOCK_KEY="github-actions-runners/${{ github.event.inputs.environment || 'prod' }}/terraform.tfstate.tflock"
+          LOCK_KEY="github-actions-runners/${{ env.TARGET_ENV }}/terraform.tfstate.tflock"
           LOCK_JSON=$(aws s3api get-object \
             --bucket "${{ secrets.TF_STATE_BUCKET }}" \
             --key "$LOCK_KEY" \
@@ -154,6 +159,7 @@ jobs:
         run: |
           terraform plan \
             -var="github_owner=${{ secrets.GH_RUNNER_ORG }}" \
+            -var="github_repo=" \
             -var="runner_ami_id=${{ vars.RUNNER_AMI_ID }}" \
             -out=tfplan.binary \
             -no-color \
@@ -167,7 +173,7 @@ jobs:
       - name: Upload plan artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan-${{ github.run_id }}
+          name: terraform-plan-${{ env.TARGET_ENV }}-${{ github.run_id }}
           path: |
             ${{ env.TF_WORKING_DIR }}/tfplan.binary
             ${{ env.TF_WORKING_DIR }}/tfplan.json
@@ -181,7 +187,7 @@ jobs:
             const fs = require('fs');
             const output = fs.readFileSync('${{ env.TF_WORKING_DIR }}/plan_output.txt', 'utf8');
             const truncated = output.length > 60000 ? output.slice(0, 60000) + '\n...(truncated)' : output;
-            const body = `## Terraform Plan — \`${{ github.event.inputs.environment || 'prod' }}\`
+            const body = `## Terraform Plan — \`${{ env.TARGET_ENV }}\`
             <details><summary>Show Plan</summary>
 
             \`\`\`hcl
@@ -198,17 +204,24 @@ jobs:
             });
 
   # ───────────────────────────────────────────────────────────────────────────
-  # 3. Apply — only on push to main or manual dispatch with action=apply
+  # 3. Apply
+  #    - push to main            → auto-applies PROD only (dev is never
+  #                                auto-applied from main)
+  #    - workflow_dispatch apply → applies whichever environment was chosen
+  #
+  # The GitHub Environment gate (required reviewers / branch protection) is
+  # enforced by the `environment:` key below — configure it in:
+  #   GitHub → Settings → Environments → dev / prod
   # ───────────────────────────────────────────────────────────────────────────
   apply:
-    name: "Terraform Apply"
+    name: "Terraform Apply (${{ github.event.inputs.environment || 'dev' }})"
     runs-on: ubuntu-latest
     needs: plan
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'push' ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
     environment:
-      name: ${{ github.event.inputs.environment || 'prod' }}
+      name: ${{ github.event.inputs.environment || 'dev' }}
 
     steps:
       - name: Checkout
@@ -220,23 +233,23 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.4
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-          role-session-name: GitHubActions-Apply
+          role-session-name: GitHubActions-Apply-${{ env.TARGET_ENV }}
 
       - name: Download plan artifact
         uses: actions/download-artifact@v4
         with:
-          name: terraform-plan-${{ github.run_id }}
+          name: terraform-plan-${{ env.TARGET_ENV }}-${{ github.run_id }}
           path: ${{ env.TF_WORKING_DIR }}
 
       - name: Terraform Init
         run: |
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=github-actions-runners/${{ github.event.inputs.environment || 'prod' }}/terraform.tfstate" \
+            -backend-config="key=github-actions-runners/${{ env.TARGET_ENV }}/terraform.tfstate" \
             -backend-config="region=${{ env.AWS_REGION }}" \
             -backend-config="use_lockfile=true" \
             -backend-config="encrypt=true" \
@@ -250,19 +263,22 @@ jobs:
       - name: Output summary
         run: |
           echo "### Terraform Apply Complete :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Environment:** \`${{ env.TARGET_ENV }}\`" >> "$GITHUB_STEP_SUMMARY"
           terraform output -no-color >> "$GITHUB_STEP_SUMMARY"
         working-directory: ${{ env.TF_WORKING_DIR }}
 
   # ───────────────────────────────────────────────────────────────────────────
   # 4. Destroy — manual only, requires explicit action=destroy
+  #    Protected by a separate GitHub Environment gate (*-destroy) so it
+  #    requires an additional manual approval before running.
   # ───────────────────────────────────────────────────────────────────────────
   destroy:
-    name: "Terraform Destroy"
+    name: "Terraform Destroy (${{ github.event.inputs.environment || 'dev' }})"
     runs-on: ubuntu-latest
     needs: validate
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
     environment:
-      name: ${{ github.event.inputs.environment || 'prod' }}-destroy  # separate env gate
+      name: ${{ github.event.inputs.environment || 'dev' }}-destroy  # separate env gate
 
     steps:
       - name: Checkout
@@ -274,7 +290,7 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.4
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -283,7 +299,7 @@ jobs:
         run: |
           terraform init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="key=github-actions-runners/${{ github.event.inputs.environment || 'prod' }}/terraform.tfstate" \
+            -backend-config="key=github-actions-runners/${{ env.TARGET_ENV }}/terraform.tfstate" \
             -backend-config="region=${{ env.AWS_REGION }}" \
             -backend-config="use_lockfile=true" \
             -backend-config="encrypt=true" \
@@ -294,6 +310,7 @@ jobs:
         run: |
           terraform destroy \
             -var="github_owner=${{ secrets.GH_RUNNER_ORG }}" \
+            -var="github_repo=" \
             -var="runner_ami_id=${{ vars.RUNNER_AMI_ID }}" \
             -auto-approve
         working-directory: ${{ env.TF_WORKING_DIR }}
