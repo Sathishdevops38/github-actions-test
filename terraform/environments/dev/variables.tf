@@ -133,7 +133,7 @@ variable "runner_root_volume_size_gb" {
 variable "min_runners" {
   description = "Minimum ASG capacity."
   type        = number
-  default     = 0
+  default     = 1
 }
 
 variable "max_runners" {

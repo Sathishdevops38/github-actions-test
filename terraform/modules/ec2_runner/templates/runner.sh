@@ -261,7 +261,7 @@ done
 # The runner service logs are collected via journald (not a flat file) so that
 # stdout/stderr from every job is captured reliably without needing a separate
 # log-rotation scheme.
-cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CWCONF'
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << CWCONF
 {
   "logs": {
     "logs_collected": {
